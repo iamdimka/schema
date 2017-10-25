@@ -1,6 +1,6 @@
 export type Signal = "SIGINT" | "SIGTERM" | "SIGUSR1" | "SIGUSR2"
 
-export default class Microservice {
+export class Microservice {
   isGoingDown = false
 
   protected _env = { ...process.env }
@@ -30,7 +30,7 @@ export default class Microservice {
 
     const payload = require(data.path)
     let override
-    for (const key of payload) {
+    for (const key in payload) {
       if (payload.hasOwnProperty(key)) {
         if (typeof payload[key] !== "object") {
           this._env[key] = payload[key]
