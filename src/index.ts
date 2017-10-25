@@ -1,5 +1,3 @@
-import * as path from "path"
-
 export type Signal = "SIGINT" | "SIGTERM" | "SIGUSR1" | "SIGUSR2"
 
 export default class Microservice {
@@ -23,9 +21,28 @@ export default class Microservice {
     return this
   }
 
-  extendEnv(...pathSegments: string[]) {
-    const file = path.resolve(...pathSegments)
-    Object.assign(this._env, require(file))
+  extendEnv(data: string | { path: string, env?: string }) {
+    if (typeof data === "string") {
+      data = {
+        path: data
+      }
+    }
+
+    const payload = require(data.path)
+    let override
+    for (const key of payload) {
+      if (payload.hasOwnProperty(key)) {
+        if (typeof payload[key] !== "object") {
+          this._env[key] = payload[key]
+        } else if (key === data.env) {
+          override = payload[key]
+        }
+      }
+    }
+
+    if (override) {
+      Object.assign(this._env, override)
+    }
   }
 
   env(name: string, defaultValue?: string) {
