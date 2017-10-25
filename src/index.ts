@@ -3,7 +3,7 @@ import * as path from "path"
 export type Signal = "SIGINT" | "SIGTERM" | "SIGUSR1" | "SIGUSR2"
 
 export default class Microservice {
-  isShuttingDown = false
+  isGoingDown = false
 
   protected _env = { ...process.env }
   protected _promises = new Set<Promise<any>>()
@@ -58,9 +58,11 @@ export default class Microservice {
   }
 
   async shutdown(reason?: Signal | Error) {
-    if (this.isShuttingDown) {
+    if (this.isGoingDown) {
       return
     }
+
+    this.isGoingDown = true
 
     if (typeof reason === "string") {
       console.info(`Going down: Got signal ${reason}`)
@@ -85,7 +87,7 @@ export default class Microservice {
     process.exit(code)
   }
 
-  registerShutdownCallback(fn: Function) {
+  registerShutdownCallback(fn: Function): this {
     this._shutdownCallbacks.push(fn)
     return this
   }
