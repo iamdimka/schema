@@ -39,7 +39,7 @@ export class Microservice {
       }
     }
 
-    const payload = require(data.path)
+    const payload = require(this.relative(data.path))
     let override
     for (const key in payload) {
       if (payload.hasOwnProperty(key)) {
