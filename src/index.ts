@@ -21,7 +21,7 @@ export class Microservice {
     return this
   }
 
-  extendEnv(data: string | { path: string, env?: string }) {
+  extendEnv(data: string | { path: string, env?: string, overwrite?: true }): this {
     if (typeof data === "string") {
       data = {
         path: data
@@ -43,21 +43,31 @@ export class Microservice {
     if (override) {
       Object.assign(this._env, override)
     }
+
+    if (data.overwrite) {
+      Object.assign(process.env, this._env)
+    }
+    
+    return this
   }
 
-  env(name: string, defaultValue?: string) {
+  env(name: string, defaultValue?: string): string {
     if (this._env.hasOwnProperty(name)) {
-      return this._env[name]
+      return this._env[name] as string
+    }
+
+    if (process.env.hasOwnProperty(name)) {
+      return process.env[name] as string
     }
 
     if (arguments.length === 1) {
       throw new Error(`Environment variable "${name}" is required`)
     }
 
-    return defaultValue
+    return defaultValue as string
   }
 
-  promise(cbOrPromise: Function | Promise<any>) {
+  promise(cbOrPromise: Function | Promise<any>): this {
     while (typeof cbOrPromise === "function") {
       cbOrPromise = cbOrPromise()
     }
@@ -66,12 +76,16 @@ export class Microservice {
       this._promises.add(cbOrPromise as Promise<any>)
       cbOrPromise.catch(() => null).then(() => this._promises.delete(cbOrPromise as Promise<any>))
     }
+
+    return this
   }
 
-  handleSignals(...signals: Signal[]) {
+  handleSignals(...signals: Signal[]): this {
     for (const signal of signals) {
       process.on(signal, () => this.shutdown(signal))
     }
+
+    return this
   }
 
   async shutdown(reason?: Signal | Error) {
@@ -84,7 +98,7 @@ export class Microservice {
     if (typeof reason === "string") {
       console.info(`Going down: Got signal ${reason}`)
     } else if (reason && reason instanceof Error) {
-      console.error(`Going down: Unhandled error ${reason.message}`)
+      console.error(`Going down: Unhandled error ${reason.message}\n${reason.stack}`)
     }
 
     let code = 0
