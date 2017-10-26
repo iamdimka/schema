@@ -1,11 +1,22 @@
+import { resolve } from "path"
 export type Signal = "SIGINT" | "SIGTERM" | "SIGUSR1" | "SIGUSR2"
 
 export class Microservice {
   isGoingDown = false
 
+  protected _cwd = process.cwd()
   protected _env = { ...process.env }
   protected _promises = new Set<Promise<any>>()
   protected _shutdownCallbacks = [] as Function[]
+
+  setWorkingDirectory(path: string): this {
+    this._cwd = path
+    return this
+  }
+
+  relative(path: string): string {
+    return resolve(this._cwd, path)
+  }
 
   run(cb: (m?: Microservice) => void | Promise<void>): this {
     try {
@@ -47,7 +58,7 @@ export class Microservice {
     if (data.overwrite) {
       Object.assign(process.env, this._env)
     }
-    
+
     return this
   }
 
@@ -98,7 +109,7 @@ export class Microservice {
     if (typeof reason === "string") {
       console.info(`Going down: Got signal ${reason}`)
     } else if (reason && reason instanceof Error) {
-      console.error(`Going down: Unhandled error ${reason.message}\n${reason.stack}`)
+      console.error(`Going down: Unhandled error ${reason.stack}`)
     }
 
     let code = 0
