@@ -14,8 +14,8 @@ export class Microservice {
     return this
   }
 
-  relative(path: string): string {
-    return resolve(this._cwd, path)
+  relative(...path: string[]): string {
+    return resolve(this._cwd, ...path)
   }
 
   run(cb: (m?: Microservice) => void | Promise<void>): this {
