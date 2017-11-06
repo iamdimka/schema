@@ -1,3 +1,4 @@
+import { readFileSync } from "fs"
 import { resolve } from "path"
 export type Signal = "SIGINT" | "SIGTERM" | "SIGUSR1" | "SIGUSR2"
 
@@ -39,20 +40,29 @@ export class Microservice {
       }
     }
 
-    const payload = require(this.relative(data.path))
-    let override
-    for (const key in payload) {
-      if (payload.hasOwnProperty(key)) {
-        if (typeof payload[key] !== "object") {
-          this._env[key] = payload[key]
-        } else if (key === data.env) {
-          override = payload[key]
+    if (!/\.js(on)?/i.test(data.path)) {
+      const payload = readFileSync(this.relative(data.path), "utf8")
+      const rx = /^\s*(.+?)\s*=\s*(.+?)\s*$/gm
+      let m
+      while (m = rx.exec(payload)) {
+        this._env[m[1]] = m[2]
+      }
+    } else {
+      const payload = require(this.relative(data.path))
+      let override
+      for (const key in payload) {
+        if (payload.hasOwnProperty(key)) {
+          if (typeof payload[key] !== "object") {
+            this._env[key] = payload[key]
+          } else if (key === data.env) {
+            override = payload[key]
+          }
         }
       }
-    }
 
-    if (override) {
-      Object.assign(this._env, override)
+      if (override) {
+        Object.assign(this._env, override)
+      }
     }
 
     if (data.overwrite) {
