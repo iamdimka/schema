@@ -5,10 +5,20 @@ export type Signal = "SIGINT" | "SIGTERM" | "SIGUSR1" | "SIGUSR2"
 export class Microservice {
   isGoingDown = false
 
+  private static _instance?: Microservice
+
   protected _cwd = process.cwd()
   protected _env = { ...process.env }
   protected _promises = new Set<Promise<any>>()
   protected _shutdownCallbacks = [] as Function[]
+
+  static instance(): Microservice {
+    if (!this._instance) {
+      this._instance = new Microservice()
+    }
+
+    return this._instance
+  }
 
   setWorkingDirectory(path: string): this {
     this._cwd = path
