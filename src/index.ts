@@ -50,15 +50,11 @@ export class Microservice {
       }
     }
 
-    if (!/\.js(on)?/i.test(data.path)) {
-      const payload = readFileSync(this.relative(data.path), "utf8")
-      const rx = /^\s*(.+?)\s*=\s*(.+?)\s*$/gm
-      let m
-      while (m = rx.exec(payload)) {
-        this._env[m[1]] = m[2]
-      }
-    } else {
-      const payload = require(this.relative(data.path))
+    const file = readFileSync(this.relative(data.path), "utf8")
+
+    if (/\.json?/i.test(data.path)) {
+      const payload = JSON.parse(file)
+
       let override
       for (const key in payload) {
         if (payload.hasOwnProperty(key)) {
@@ -72,6 +68,12 @@ export class Microservice {
 
       if (override) {
         Object.assign(this._env, override)
+      }
+    } else {
+      const rx = /^\s*(.+?)\s*=\s*(.+?)\s*$/gm
+      let m
+      while (m = rx.exec(file)) {
+        this._env[m[1]] = m[2]
       }
     }
 
