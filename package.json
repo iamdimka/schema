@@ -1,6 +1,6 @@
 {
   "name": "@iamdimka/microservice",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "scripts": {
@@ -11,6 +11,6 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "@types/node": "^8.0.53"
+    "@types/node": "^8.0.58"
   }
 }

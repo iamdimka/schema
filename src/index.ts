@@ -29,7 +29,7 @@ export class Microservice {
     return resolve(this._cwd, ...path)
   }
 
-  run(cb: (m?: Microservice) => void | Promise<void>): this {
+  run(cb: (m: Microservice) => void | Promise<void>): this {
     try {
       const result = cb(this)
 
@@ -157,7 +157,7 @@ export class Microservice {
   }
 }
 
-export function microservice(fn: (m?: Microservice) => void | Promise<void>): Microservice {
+export function microservice(fn: (m: Microservice) => void | Promise<void>): Microservice {
   const m = new Microservice()
   m.run(fn)
   return m
