@@ -1,16 +1,16 @@
 {
-  "name": "@iamdimka/microservice",
-  "version": "0.5.1",
+  "name": "@iamdimka/schema",
+  "version": "0.1.1",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "scripts": {
     "prepare": "tsc"
   },
-  "repository": "iamdimka/npm-microservice.git",
+  "repository": "iamdimka/npm-schema.git",
   "author": "iamdimka",
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "@types/node": "^8.0.53"
+    "@types/node": "^8.5.1"
   }
 }
