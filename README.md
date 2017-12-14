@@ -1,1 +1,3 @@
-# @iamdimka/microservice
+# @iamdimka/schema
+
+Simple schema validation 
