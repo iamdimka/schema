@@ -88,6 +88,10 @@ export abstract class Validator<T> {
     return validator
   }
 
+  optional(): Validator<T | void> {
+    return this._with("default", () => undefined)
+  }
+
   default(value?: T | (() => T)): this {
     let result
 
