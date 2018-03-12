@@ -340,6 +340,53 @@ export class ObjectValidator<T extends KeyValue = {}> extends Validator<T> {
 }
 
 
+export class BinaryValidator extends Validator<Buffer> {
+  readonly type = "object"
+
+  length(length: number): this {
+    return this._with("length", length)
+  }
+
+  min(min: number): this {
+    return this._with("min", min)
+  }
+
+  max(max: number): this {
+    return this._with("max", max)
+  }
+
+  example(): Buffer {
+    if (this.rules.length !== undefined) {
+      return Buffer.allocUnsafe(this.rules.length)
+    }
+
+    const min = this.rules.min || 0
+    const max = this.rules.max || 64
+    return Buffer.allocUnsafe(min + Math.floor(Math.random() * (max - min)))
+  }
+
+  protected _validate(item: Buffer, name: string, { length, min, max }: KeyValue): Buffer {
+    if (!(item instanceof Buffer)) {
+      throw new ValidatorError(`"${name}" should be instance of Buffer`, name, "type", "buffer")
+    }
+
+    if (length !== undefined && item.length !== length) {
+      throw new ValidatorError(`"${name}" length should equal ${length}`, name, "length", length)
+    }
+
+    if (min !== undefined && item.length < min) {
+      throw new ValidatorError(`"${name}" length should be at least ${min}`, name, "min", min)
+    }
+
+    if (max !== undefined && item.length > max) {
+      throw new ValidatorError(`"${name}" length should be at most ${max}`, name, "max", max)
+    }
+
+    return item
+  }
+}
+
+
 export class ArrayValidator<T = any> extends Validator<T[]> {
   readonly type = "array"
 
@@ -360,7 +407,22 @@ export class ArrayValidator<T = any> extends Validator<T[]> {
   }
 
   example() {
-    return []
+    let min = this.rules.min || 0
+    let max = this.rules.max || 8
+
+    if (this.rules.length !== undefined) {
+      min = max = this.rules.lenght
+    }
+
+    const result: T[] = []
+    for (let i = 0, l = Math.floor(min + Math.random() * (max - min)); i < l; i++) {
+      if (this.rules.of === undefined) {
+        result.push((Math.random() < 0.5) as any)
+      } else {
+        result.push(this.rules.of.example())
+      }
+    }
+    return result
   }
 
   protected _validate(item: T[], name: string, { length, min, max, of }: KeyValue): T[] {
@@ -432,7 +494,7 @@ export class EqualValidator<T> extends Validator<T> {
   }
 
   example(): T {
-    return null as any
+    return this.rules.equal
   }
 
   protected _validate(item: T, name: string, rules: KeyValue): T {
@@ -485,6 +547,10 @@ export class AnyValidator<T = any> extends Validator<T> {
 
     return item
   }
+}
+
+export function binary(): BinaryValidator {
+  return new BinaryValidator()
 }
 
 export function boolean(): BooleanValidator {
@@ -570,6 +636,7 @@ export interface ValidateBuilder {
 
 export default {
   boolean,
+  binary,
   number,
   string,
   object,
