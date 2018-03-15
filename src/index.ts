@@ -625,6 +625,7 @@ function oneOf<T>(...values: T[]) {
 
 export interface ValidateBuilder {
   boolean(): BooleanValidator
+  binary(): BinaryValidator
   number(): NumberValidator
   string(): StringValidator
   object<T>(schema?: {[K in keyof T]: Validator<T[K]> }): ObjectValidator<T>
