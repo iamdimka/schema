@@ -541,7 +541,7 @@ export class AnyValidator<T = any> extends Validator<T> {
       const found = this.rules.oneOf.some((example: any) => isEqual(example, item))
 
       if (!found) {
-        throw new Error("Invalid value")
+        throw new Error(`"${name}" has unexpected value`)
       }
     }
 
