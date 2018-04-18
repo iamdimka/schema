@@ -286,11 +286,15 @@ export class NumberValidator extends Validator<number> {
 export class ObjectValidator<T extends KeyValue = {}> extends Validator<T> {
   readonly type = "object"
 
-  schema<S>(schema: {[K in keyof S]: Validator<S[K]> }): ObjectValidator<S> {
+  schema<S>(schema: { [K in keyof S]: Validator<S[K]> }): ObjectValidator<S> {
     return this._with("schema", schema) as any
   }
 
-  other(other: boolean = true): this {
+  other<O>(other?: Validator<O>): ObjectValidator<{ [key: string]: O } & T> {
+    if (!other) {
+      return this._with("other", true)
+    }
+
     return this._with("other", other)
   }
 
@@ -311,7 +315,15 @@ export class ObjectValidator<T extends KeyValue = {}> extends Validator<T> {
     if (rules.other) {
       for (const key in item) {
         if (item.hasOwnProperty(key) && !rules.schema.hasOwnProperty(key)) {
-          result[key] = item[key]
+          if (rules.other === true) {
+            result[key] = item[key]
+          } else {
+            const value = rules.other.validate(item[key], `${name}.${key}`)
+            
+            if (value !== undefined) {
+              result[key] = value
+            }
+          }
         }
       }
     } else {
@@ -514,11 +526,25 @@ export class AnyValidator<T = any> extends Validator<T> {
     return this
   }
 
-  maybe<V>(...maybe: Validator<V>[]): AnyValidator<V> {
-    return this._with("maybe", maybe) as any
+  maybe<V>(...maybe: Array<Validator<V> | V>): AnyValidator<V> {
+    return this._with("maybe", maybe.map(item => {
+      if (item instanceof Validator) {
+        return item
+      }
+
+      return equal(item)
+    })) as any
   }
 
   example(): T {
+    if (this.rules.oneOf) {
+      return this.rules.oneOf[Math.floor(Math.random() * this.rules.oneOf.lenght)]
+    }
+
+    if (this.rules.maybe && this.rules.maybe.lenght) {
+      return this.rules.maybe[Math.floor(Math.random() * this.rules.maybe.lenght)].example()
+    }
+
     return null as any
   }
 
@@ -565,7 +591,7 @@ export function string(): StringValidator {
   return new StringValidator()
 }
 
-export function object<T>(schema?: {[K in keyof T]: Validator<T[K]> }): ObjectValidator<T> {
+export function object<T>(schema?: { [K in keyof T]: Validator<T[K]> }): ObjectValidator<T> {
   const v = new ObjectValidator<T>()
   return schema ? v.schema(schema) : v
 }
@@ -628,7 +654,7 @@ export interface ValidateBuilder {
   binary(): BinaryValidator
   number(): NumberValidator
   string(): StringValidator
-  object<T>(schema?: {[K in keyof T]: Validator<T[K]> }): ObjectValidator<T>
+  object<T>(schema?: { [K in keyof T]: Validator<T[K]> }): ObjectValidator<T>
   array<T>(of?: Validator<T>): ArrayValidator<T>
   equal<T>(item: T): EqualValidator<T>
   any<T>(...maybe: Validator<T>[]): AnyValidator<T>
