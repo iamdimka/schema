@@ -314,12 +314,12 @@ export class ObjectValidator<T extends KeyValue = {}> extends Validator<T> {
 
     if (rules.other) {
       for (const key in item) {
-        if (item.hasOwnProperty(key) && !rules.schema.hasOwnProperty(key)) {
+        if (item.hasOwnProperty(key) && (!rules.schema || !rules.schema.hasOwnProperty(key))) {
           if (rules.other === true) {
             result[key] = item[key]
           } else {
             const value = rules.other.validate(item[key], `${name}.${key}`)
-            
+
             if (value !== undefined) {
               result[key] = value
             }
