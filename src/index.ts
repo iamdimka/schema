@@ -4,7 +4,7 @@ export type Rules<T> = {
 }
 
 export class ValidatorError extends Error {
-  data: {
+  readonly data: {
     field: string
     validator: string
     arg: any
@@ -17,6 +17,14 @@ export class ValidatorError extends Error {
       field,
       validator,
       arg
+    }
+
+    if (!(this instanceof ValidatorError)) {
+      Object.setPrototypeOf(this, ValidatorError.prototype)
+    }
+
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, ValidatorError)
     }
   }
 }
@@ -251,14 +259,26 @@ export class NumberValidator extends Validator<number> {
     return this._with("step", step)
   }
 
+  integer(integer: boolean = true) {
+    return this._with("integer", integer)
+  }
+
   example() {
     const min = this.rules.min || this.rules.above || 0
     const max = this.rules.max || this.rules.below || 0
     let value = min + Math.random() * (max - min)
+    if (this.rules.integer) {
+      return Math.round(value)
+    }
+
     return this.rules.step ? Math.floor(value / this.rules.step) * this.rules.step : value
   }
 
-  protected _validate(item: number, name: string, { min, max, above, below, step }: KeyValue): number {
+  protected _validate(item: number, name: string, { integer, min, max, above, below, step }: KeyValue): number {
+    if (integer && item % 1 !== 0) {
+      throw new ValidatorError(`"${name}" should be integer`, name, "integer", integer)
+    }
+
     if (min !== undefined && item < min) {
       throw new ValidatorError(`"${name}" should be at least ${min}`, name, "min", min)
     }
