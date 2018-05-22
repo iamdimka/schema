@@ -263,7 +263,7 @@ export class NumberValidator extends Validator<number> {
     return this._with("integer", integer)
   }
 
-  example() {
+  example(): number {
     const min = this.rules.min || this.rules.above || 0
     const max = this.rules.max || this.rules.below || 0
     let value = min + Math.random() * (max - min)
@@ -357,7 +357,7 @@ export class ObjectValidator<T extends KeyValue = {}> extends Validator<T> {
     return result
   }
 
-  example() {
+  example(): T {
     const example = {} as T
     if (this.rules.schema) {
       for (const key in this.rules.schema) {
