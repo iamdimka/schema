@@ -96,7 +96,7 @@ export abstract class Validator<T> {
     return validator
   }
 
-  optional(): Validator<T | void> {
+  optional(): Validator<T | undefined> {
     return this._with("default", () => undefined)
   }
 

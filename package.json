@@ -1,6 +1,6 @@
 {
   "name": "@iamdimka/schema",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "scripts": {
@@ -11,6 +11,6 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "@types/node": "^9.6.5"
+    "@types/node": "^10.7.1"
   }
 }
