@@ -122,11 +122,11 @@ export abstract class Validator<T> {
   }
 
   validate(item: any, name: string): T {
-    const type = typeof item
-
-    if (type === "undefined" && this.rules.hasOwnProperty("default")) {
+    if (item == null && this.rules.hasOwnProperty("default")) {
       return this.rules.default()
     }
+
+    const type = typeof item
 
     if (this.type && type !== this.type && (this.type !== "array" || type !== "object" || !(item instanceof Array))) {
       throw new ValidatorError(`"${name}" should have type ${this.type}, got ${type}`, name, "type", this.type)
