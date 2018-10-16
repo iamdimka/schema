@@ -486,13 +486,13 @@ export class EqualValidator<T> extends Validator<T> {
     let t2 = type(b)
 
     if (t1 !== t2) {
-      throw new Error(`"${name}" should have type ${t2}, got ${t1}`)
+      throw new ValidatorError(`"${name}" should have type ${t2}, got ${t1}`, name, "type", t2)
     }
 
     if (t1 === "object") {
       for (const key in a) {
         if (a.hasOwnProperty(key) && !b.hasOwnProperty(key)) {
-          throw new Error(`"${name}.${key}" is not expected`)
+          throw new ValidatorError(`"${name}.${key}" is not expected`, name, "equal.unexpected", key)
         }
       }
 
@@ -508,7 +508,7 @@ export class EqualValidator<T> extends Validator<T> {
       const l = a.length
 
       if (l !== b.length) {
-        throw new Error(`"${name}" length should be ${b.length}`)
+        throw new ValidatorError(`"${name}" length should be ${b.length}`, name, "length", b.length)
       }
 
       for (let i = 0; i < l; i++) {
@@ -519,7 +519,7 @@ export class EqualValidator<T> extends Validator<T> {
     }
 
     if (a !== b) {
-      throw new Error(`"${name}" should equal ${b}`)
+      throw new ValidatorError(`"${name}" should equal ${b}`, name, "equal", b)
     }
 
     return true
@@ -571,23 +571,25 @@ export class AnyValidator<T = any> extends Validator<T> {
   protected _validate(item: T, name: string, rules: this["rules"]): T {
     if (rules.maybe && rules.maybe.length > 0) {
       const errors = []
+      const errs: any = []
 
       for (const check of rules.maybe) {
         try {
           return check.validate(item, name)
         } catch (e) {
+          errs.push(e)
           errors.push(e.message)
         }
       }
 
-      throw new Error(errors.join(" or "))
+      throw new ValidatorError(errors.join(" or "), name, "many", errs)
     }
 
     if (rules.oneOf) {
       const found = this.rules.oneOf.some((example: any) => isEqual(example, item))
 
       if (!found) {
-        throw new Error(`"${name}" has unexpected value`)
+        throw new ValidatorError(`"${name}" has unexpected value`, name, "notExpected", undefined)
       }
     }
 
