@@ -3,6 +3,17 @@ export type Rules<T> = {
   default?: () => T
 }
 
+if (!Number.isInteger) {
+  Number.isInteger = n => Math.trunc(n) === n
+}
+
+if (!Array.isArray) {
+  Array.isArray = (arg: any): arg is any[] => arg instanceof Array
+}
+
+const testNumericInteger = /^[0-9]+$/
+const testNumericFloating = /^[0-9]+(\.[0-9]+)?$/
+
 export class ValidatorError extends Error {
   readonly data: {
     field: string
@@ -40,9 +51,9 @@ function isEqual(a: any, b: any): boolean {
     return false
   }
 
-  const isArrayB = b instanceof Array
+  const isArrayB = Array.isArray(b)
 
-  if (a instanceof Array) {
+  if (Array.isArray(a)) {
     if (!isArrayB) {
       return false
     }
@@ -128,7 +139,7 @@ export abstract class Validator<T> {
 
     const type = typeof item
 
-    if (this.type && type !== this.type && (this.type !== "array" || type !== "object" || !(item instanceof Array))) {
+    if (this.type && type !== this.type && (this.type !== "array" || type !== "object" || !Array.isArray(item))) {
       throw new ValidatorError(`"${name}" should have type ${this.type}, got ${type}`, name, "type", this.type)
     }
 
@@ -175,6 +186,10 @@ export class StringValidator extends Validator<string> {
     return this._with("match", match)
   }
 
+  numeric(floating?: boolean): this {
+    return this._with("numeric", !!floating)
+  }
+
   protected _generateAz09() {
     const code = Math.floor(Math.random() * 62)
 
@@ -206,13 +221,21 @@ export class StringValidator extends Validator<string> {
     return this.rules.toLower ? example.toLowerCase() : example
   }
 
-  protected _validate(item: string, name: string, { trim, toLower, length, min, max, match }: KeyValue): string {
+  protected _validate(item: string, name: string, { trim, toLower, length, min, max, match, numeric }: KeyValue): string {
     if (trim) {
       item = item.trim()
     }
 
     if (toLower) {
       item = item.toLocaleLowerCase()
+    }
+
+    if (numeric === false && !testNumericInteger.test(item)) {
+      throw new ValidatorError(`"${name}" expected to be numeric`, name, "numeric", numeric)
+    }
+
+    if (numeric === true && !testNumericFloating.test(item)) {
+      throw new ValidatorError(`"${name}" expected to be numeric`, name, "numeric", numeric)
     }
 
     if (length !== undefined && item.length !== length) {
@@ -275,7 +298,7 @@ export class NumberValidator extends Validator<number> {
   }
 
   protected _validate(item: number, name: string, { integer, min, max, above, below, step }: KeyValue): number {
-    if (integer && item % 1 !== 0) {
+    if (integer && !Number.isInteger(item)) {
       throw new ValidatorError(`"${name}" should be integer`, name, "integer", integer)
     }
 
@@ -643,7 +666,7 @@ function type(item: any): "null" | "undefined" | "boolean" | "number" | "string"
     return "null"
   }
 
-  return item instanceof Array ? "array" : item
+  return Array.isArray(item) ? "array" : item
 }
 
 function clone<T>(item: T): T {
@@ -651,7 +674,7 @@ function clone<T>(item: T): T {
     return item
   }
 
-  if (item instanceof Array) {
+  if (Array.isArray(item)) {
     return item.map(clone) as any
   }
 
