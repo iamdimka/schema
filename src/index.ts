@@ -372,7 +372,9 @@ export class ObjectValidator<T extends KeyValue = {}> extends Validator<T> {
         return this.set("schema", schema) as any;
     }
 
-    other<O>(other?: Validator<O>): ObjectValidator<{ [key: string]: O; } & T> {
+    other<O>(other?: Validator<O>): ObjectValidator<{ [key: string]: O; } & T>;
+    other(other?: true): ObjectValidator<{ [key: string]: any; }>;
+    other(other?: any): ObjectValidator<any> {
         if (!other) {
             return this.set("other", true);
         }
@@ -395,12 +397,12 @@ export class ObjectValidator<T extends KeyValue = {}> extends Validator<T> {
 
         if (typeof rules.minProperties === Type.number) {
             c.props();
-            c`if (props.length < ${rules.minProperties}) throw new TypeError($$ + " should have at least ${rules.minProperties}" + ${rules.minProperties === 1 ? "property" : "properties"})`;
+            c`if (props.length < ${rules.minProperties}) throw new TypeError($$ + " should have at least ${rules.minProperties} propert" + ${rules.minProperties === 1 ? "y" : "ies"})`;
         }
 
         if (typeof rules.maxProperties === Type.number) {
             c.props();
-            c`if (props.length > ${rules.maxProperties}) throw new TypeError($$ + " should have at most ${rules.maxProperties}" + ${rules.maxProperties === 1 ? "property" : "properties"})`;
+            c`if (props.length > ${rules.maxProperties}) throw new TypeError($$ + " should have at most ${rules.maxProperties} propert" + ${rules.maxProperties === 1 ? "y" : "ies"})`;
         }
 
         if (rules.schema) {
@@ -410,9 +412,16 @@ export class ObjectValidator<T extends KeyValue = {}> extends Validator<T> {
         }
 
         if (rules.other) {
-            c`const keys2 = ${Object.keys(rules.schema)};`;
-            const fn = rules.other.compile();
-            c`for (const key in $) if (keys2.indexOf(key) < 0) $[key] = ${fn}($[key], $$ + "." + key);`;
+            if (rules.other === true) {
+                //nothing
+            } else if (rules.schema) {
+                c`const keys2 = ${Object.keys(rules.schema)};`;
+                const fn = rules.other.compile();
+                c`for (const key in $) if (keys2.indexOf(key) < 0) $[key] = ${fn}($[key], $$ + "." + key);`;
+            } else {
+                const fn = rules.other.compile();
+                c`for (const key in $) $[key] = ${fn}($[key], $$ + "." + key);`;
+            }
         } else {
             c`const keys2 = ${Object.keys(rules.schema)};`;
             c`for (const key in $) if (keys2.indexOf(key) < 0) throw new TypeError($$ + ' has key "' + '" which is not expected');`;
@@ -532,7 +541,7 @@ export class ArrayValidator<T = any> extends Validator<T[]> {
         }
 
         if (typeof minItems === Type.number) {
-            c`if ($.length < ${minItems}) throw new TypeError($$ + " should have at least ${minItems} ")`;
+            c`if ($.length < ${minItems}) throw new TypeError($$ + " should have at least ${minItems}")`;
         }
 
         if (typeof maxItems === Type.number) {
