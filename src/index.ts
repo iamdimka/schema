@@ -1,719 +1,684 @@
-export type KeyValue<V = any> = { [key: string]: V }
+import compiler from "./compiler";
+import { KeyValue, Result, Type, isEqual } from "./util";
+
+type Compiler = Result<typeof compiler>;
+
 export type Rules<T> = {
-  default?: () => T
-}
+    default?: () => T;
+};
 
 if (!Number.isInteger) {
-  Number.isInteger = n => Math.trunc(n) === n
+    Number.isInteger = n => Math.trunc(n) === n;
 }
 
 if (!Array.isArray) {
-  Array.isArray = (arg: any): arg is any[] => arg instanceof Array
+    Array.isArray = (arg: any): arg is any[] => arg instanceof Array;
 }
-
-const testNumericInteger = /^[0-9]+$/
-const testNumericFloating = /^[0-9]+(\.[0-9]+)?$/
 
 export class ValidatorError extends Error {
-  readonly data: {
-    field: string
-    validator: string
-    arg: any
-  }
+    readonly data: {
+        field: string;
+        validator: string;
+        arg: any;
+    };
 
-  constructor(message: string, field: string, validator: string, arg: any) {
-    super(message)
+    constructor(message: string, field: string, validator: string, arg: any) {
+        super(message);
 
-    this.data = {
-      field,
-      validator,
-      arg
+        this.data = {
+            field,
+            validator,
+            arg
+        };
+
+        if (Error.captureStackTrace) {
+            Error.captureStackTrace(this, ValidatorError);
+        }
     }
-
-    if (!(this instanceof ValidatorError)) {
-      Object.setPrototypeOf(this, ValidatorError.prototype)
-    }
-
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, ValidatorError)
-    }
-  }
 }
 
-function isEqual(a: any, b: any): boolean {
-  const typeOfA = typeof a
-
-  if (typeOfA !== "object") {
-    return a === b
-  }
-
-  if (typeof b !== typeOfA) {
-    return false
-  }
-
-  const isArrayB = Array.isArray(b)
-
-  if (Array.isArray(a)) {
-    if (!isArrayB) {
-      return false
-    }
-
-    if (a.length !== b.length) {
-      return false
-    }
-
-    return a.every((item, i) => isEqual(item, b[i]))
-  }
-
-  if (isArrayB) {
-    return false
-  }
-
-  for (const key in a) {
-    if (a.hasOwnProperty(key)) {
-      if (a[key] !== b[key]) {
-        return false
-      }
-    }
-  }
-
-  for (const key in b) {
-    if (b.hasOwnProperty(key)) {
-      if (!a.hasOwnProperty(key)) {
-        return false
-      }
-    }
-  }
-
-  return true
+function checkType(c: Compiler, t: Type) {
+    c.type();
+    c`if (type !== ${t}) throw new TypeError("expected " + $$ + " to have type " + ${t});\n`;
 }
-
 
 export abstract class Validator<T> {
-  readonly type?: string
-  readonly rules: KeyValue = {}
+    readonly rules: KeyValue = {};
 
-  protected abstract _validate(item: T, name: string, rules: KeyValue): T
-  abstract example(): T
+    protected compiled?: () => T;
+    protected abstract _compile(c: Compiler, rules: KeyValue): void;
+    abstract example(): T;
 
-  protected _with(rule: string, value: any): this {
-    const validator = Object.create(this)
-
-    validator.rules = {
-      ...this.rules,
-      [rule]: value
+    protected set(rule: string, value: any): this {
+        this.rules[rule] = value;
+        this.compiled = undefined;
+        return this;
     }
 
-    return validator
-  }
+    clone(): this {
+        const validator = Object.create(this);
 
-  optional(): Validator<T | undefined> {
-    return this._with("default", () => undefined)
-  }
+        validator.rules = {
+            ...this.rules
+        };
 
-  default(value?: T | (() => T)): this {
-    let result
-
-    switch (type(value)) {
-      case "function":
-        result = value
-        break
-
-      case "array":
-      case "object":
-        result = () => clone(value)
-        break
-
-      default:
-        result = () => value
-        break
+        return this;
     }
 
-    return this._with("default", result)
-  }
-
-  validate(item: any, name: string): T {
-    if (item == null && this.rules.hasOwnProperty("default")) {
-      return this.rules.default()
+    optional(): Validator<T | undefined> {
+        return this.set("default", () => undefined);
     }
 
-    const type = typeof item
-
-    if (this.type && type !== this.type && (this.type !== "array" || type !== "object" || !Array.isArray(item))) {
-      throw new ValidatorError(`"${name}" should have type ${this.type}, got ${type}`, name, "type", this.type)
+    default(value?: T | (() => T)): this {
+        return this.set("default", value);
     }
 
-    return this._validate(item, name, this.rules)
-  }
+    compile(): (item: any, name: string) => T {
+        if (this.compiled) {
+            return this.compiled;
+        }
+
+        const c = compiler();
+        const { rules } = this;
+
+        if (typeof rules.default === "function") {
+            c`if ($ == null) return ${rules.default}();`;
+        } else if ("default" in rules) {
+            c`if ($ == null) return ${rules.default};`;
+        }
+
+        this._compile(c, rules);
+        return this.compiled = c.compile();
+    }
+
+    validate(item: any, name: string): T {
+        return this.compile()(item, name);
+    }
 }
 
 export class BooleanValidator extends Validator<boolean> {
-  readonly type = "boolean"
+    protected _compile(c: Compiler) {
+        checkType(c, Type.boolean);
+    }
 
-  protected _validate(item: boolean, name: string): boolean {
-    return item
-  }
-
-  example(): boolean {
-    return Math.random() < 0.5
-  }
+    example(): boolean {
+        return Math.random() < 0.5;
+    }
 }
 
 export class StringValidator extends Validator<string> {
-  readonly type = "string"
-
-  toLower(toLower: boolean = true): this {
-    return this._with("toLower", toLower)
-  }
-
-  trim(trim: boolean = true): this {
-    return this._with("trim", trim)
-  }
-
-  length(length: number): this {
-    return this._with("length", length)
-  }
-
-  min(min: number): this {
-    return this._with("min", min)
-  }
-
-  max(max: number): this {
-    return this._with("max", max)
-  }
-
-  match(match: RegExp): this {
-    return this._with("match", match)
-  }
-
-  numeric(floating?: boolean): this {
-    return this._with("numeric", !!floating)
-  }
-
-  protected _generateAz09() {
-    const code = Math.floor(Math.random() * 62)
-
-    if (code < 10) {
-      return String.fromCharCode(code + 48)
+    toLower(toLower: boolean = true): this {
+        return this.set("toLower", toLower);
     }
 
-    if (code < 36) {
-      return String.fromCharCode(code + 55)
+    trim(trim: boolean = true): this {
+        return this.set("trim", trim);
     }
 
-    return String.fromCharCode(code + 61)
-  }
-
-  example(): string {
-    let min = this.rules.min || 0
-    let max = this.rules.max || 50
-
-    if (this.rules.length) {
-      min = max = this.rules.length
+    length(length: number): this {
+        return this.set("length", length);
     }
 
-    let example = ""
-
-    for (let i = 0, l = min + Math.random() * (max - min); i < l; i++) {
-      example += this._generateAz09()
+    min(min: number) {
+        return this.minLength(min);
     }
 
-    return this.rules.toLower ? example.toLowerCase() : example
-  }
-
-  protected _validate(item: string, name: string, { trim, toLower, length, min, max, match, numeric }: KeyValue): string {
-    if (trim) {
-      item = item.trim()
+    minLength(minLength: number) {
+        return this.set("minLength", minLength);
     }
 
-    if (toLower) {
-      item = item.toLocaleLowerCase()
+    max(max: number) {
+        return this.maxLength(max);
     }
 
-    if (numeric === false && !testNumericInteger.test(item)) {
-      throw new ValidatorError(`"${name}" expected to be numeric`, name, "numeric", numeric)
+    maxLength(maxLength: number) {
+        return this.set("maxLength", maxLength);
     }
 
-    if (numeric === true && !testNumericFloating.test(item)) {
-      throw new ValidatorError(`"${name}" expected to be numeric`, name, "numeric", numeric)
+    match(pattern: RegExp) {
+        return this.set("pattern", pattern);
     }
 
-    if (length !== undefined && item.length !== length) {
-      throw new ValidatorError(`"${name}" length should be ${length}`, name, "length", length)
+    numeric() {
+        return this.set("format", "numeric");
     }
 
-    if (min !== undefined && item.length < min) {
-      throw new ValidatorError(`"${name}" length should be at least ${min}`, name, "min", min)
+    pattern(pattern: string | RegExp) {
+        return this.set("pattern", typeof pattern === "string" ? new RegExp(pattern) : pattern);
     }
 
-    if (max !== undefined && item.length > max) {
-      throw new ValidatorError(`"${name}" length should be at most ${max}`, name, "max", max)
+    format(format: "alpha" | "alphanumeric" | "hexadecimal" | "identifier" | "numeric" | "date-time" | "uppercase" | "lowercase" | "hostname" | "uri" | "email" | "ipv4" | "ipv6" | "regex" | "json-pointer") {
+        return this.set("format", format);
     }
 
-    if (match && !match.test(item)) {
-      throw new ValidatorError(`"${name}" should match ${match}`, name, "match", match)
+    protected _generateAz09() {
+        const code = Math.floor(Math.random() * 62);
+
+        if (code < 10) {
+            return String.fromCharCode(code + 48);
+        }
+
+        if (code < 36) {
+            return String.fromCharCode(code + 55);
+        }
+
+        return String.fromCharCode(code + 61);
     }
 
-    return item
-  }
+    example(): string {
+        let min = this.rules.minLength || 0;
+        let max = this.rules.maxLength || 50;
+
+        if (this.rules.length) {
+            min = max = this.rules.length;
+        }
+
+        let example = "";
+
+        for (let i = 0, l = min + Math.random() * (max - min); i < l; i++) {
+            example += this._generateAz09();
+        }
+
+        return this.rules.toLower ? example.toLowerCase() : example;
+    }
+
+    protected _compile(c: Compiler, { trim, toLower, length, minLength, maxLength, pattern, format }: KeyValue) {
+        checkType(c, Type.string);
+
+        if (trim) {
+            c`$ = $.trim();`;
+        }
+
+        if (toLower) {
+            c`$ = $.toLocaleLowerCase();`;
+        }
+
+        if (format) {
+            let check;
+
+            switch (format) {
+                case "alpha":
+                    check = `!/^[a-zA-Z]+$/.test($)`;
+                    break;
+
+                case "alphanumeric":
+                    check = `!/^[a-zA-Z0-9]+$/.test($)`;
+                    break;
+
+                case "hexadecimal":
+                    check = `!/^[a-fA-F0-9]+$/.test($)`;
+                    break;
+
+                case "identifier":
+                    check = `!/^[-_a-zA-Z0-9]+$/.test($)`;
+                    break;
+
+                case "numeric":
+                    check = `!/^[0-9]+$/.test($)`;
+                    break;
+
+                case "date-time":
+                    check = `isNaN(Date.parse($)) || ~$.indexOf(\'/\')`;
+                    break;
+
+                case "uppercase":
+                    check = `$ !== $.toUpperCase()`;
+                    break;
+
+                case "lowercase":
+                    check = `$ !== $.toLowerCase()`;
+                    break;
+
+                case "hostname":
+                    check = `$.length >= 256 || !/^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])(\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9]))*$/.test($)`;
+                    break;
+
+                case "uri":
+                    check = `!/^[A-Za-z][A-Za-z0-9+\\-.]*:(?:\\/\\/(?:(?:[A-Za-z0-9\\-._~!$&\'()*+,;=:]|%[0-9A-Fa-f]{2})*@)?(?:\\[(?:(?:(?:(?:[0-9A-Fa-f]{1,4}:){6}|::(?:[0-9A-Fa-f]{1,4}:){5}|(?:[0-9A-Fa-f]{1,4})?::(?:[0-9A-Fa-f]{1,4}:){4}|(?:(?:[0-9A-Fa-f]{1,4}:){0,1}[0-9A-Fa-f]{1,4})?::(?:[0-9A-Fa-f]{1,4}:){3}|(?:(?:[0-9A-Fa-f]{1,4}:){0,2}[0-9A-Fa-f]{1,4})?::(?:[0-9A-Fa-f]{1,4}:){2}|(?:(?:[0-9A-Fa-f]{1,4}:){0,3}[0-9A-Fa-f]{1,4})?::[0-9A-Fa-f]{1,4}:|(?:(?:[0-9A-Fa-f]{1,4}:){0,4}[0-9A-Fa-f]{1,4})?::)(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))|(?:(?:[0-9A-Fa-f]{1,4}:){0,5}[0-9A-Fa-f]{1,4})?::[0-9A-Fa-f]{1,4}|(?:(?:[0-9A-Fa-f]{1,4}:){0,6}[0-9A-Fa-f]{1,4})?::)|[Vv][0-9A-Fa-f]+\\.[A-Za-z0-9\\-._~!$&\'()*+,;=:]+)\\]|(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|(?:[A-Za-z0-9\\-._~!$&\'()*+,;=]|%[0-9A-Fa-f]{2})*)(?::[0-9]*)?(?:\\/(?:[A-Za-z0-9\\-._~!$&\'()*+,;=:@]|%[0-9A-Fa-f]{2})*)*|\\/(?:(?:[A-Za-z0-9\\-._~!$&\'()*+,;=:@]|%[0-9A-Fa-f]{2})+(?:\\/(?:[A-Za-z0-9\\-._~!$&\'()*+,;=:@]|%[0-9A-Fa-f]{2})*)*)?|(?:[A-Za-z0-9\\-._~!$&\'()*+,;=:@]|%[0-9A-Fa-f]{2})+(?:\\/(?:[A-Za-z0-9\\-._~!$&\'()*+,;=:@]|%[0-9A-Fa-f]{2})*)*|)(?:\\?(?:[A-Za-z0-9\\-._~!$&\'()*+,;=:@\\/?]|%[0-9A-Fa-f]{2})*)?(?:\\#(?:[A-Za-z0-9\\-._~!$&\'()*+,;=:@\\/?]|%[0-9A-Fa-f]{2})*)?$/.test($)`;
+                    break;
+
+                case "email":
+                    check = `!/^[^@]+@[^@]+\\.[^@]+$/.test($)`;
+                    break;
+
+                case "ipv4":
+                    check = `!/^(\\d?\\d?\\d){0,255}\\.(\\d?\\d?\\d){0,255}\\.(\\d?\\d?\\d){0,255}\\.(\\d?\\d?\\d){0,255}$/.test($) || $.split(".")[3] > 255`;
+                    break;
+
+                case "ipv6":
+                    check = `!/^((?=.*::)(?!.*::.+::)(::)?([\\dA-F]{1,4}:(:|\\b)|){5}|([\\dA-F]{1,4}:){6})((([\\dA-F]{1,4}((?!\\3)::|:\\b|$))|(?!\\2\\3)){2}|(((2[0-4]|1\\d|[1-9])?\\d|25[0-5])\\.?\\b){4})$/.test($)`;
+                    break;
+
+                case "regex":
+                    check = `/[^\\\\]\\\\[^.*+?^\${}()|[\\]\\\\bBcdDfnrsStvwWxu0-9]/i.test($)`;
+                    break;
+
+                case "json-pointer":
+                    check = `!/^$|^\\/(?:~(?=[01])|[^~])*$/i.test($)`;
+                    break;
+
+                default:
+                    throw new Error(`Format ${format} is not supported`);
+            }
+
+            c.writeLine(`if (${check}) throw new Error($$ + " should have format ${format}")`);
+        }
+
+        if (typeof length === Type.number) {
+            c`if ($.length !== ${length}) throw new TypeError($$ + " length should be ${length}");`;
+        }
+
+        if (typeof minLength === Type.number) {
+            c`if ($.length < ${minLength}) throw new TypeError($$ + " length should be at least ${minLength}");`;
+        }
+
+        if (typeof maxLength === Type.number) {
+            c`if ($.length > ${maxLength}) throw new TypeError($$ + " length should be at most ${maxLength}");`;
+        }
+
+        if (pattern) {
+            c`if (!${pattern}.test($)) throw new TypeError($$ + " should match ${pattern}")`;
+        }
+    }
 }
 
-
 export class NumberValidator extends Validator<number> {
-  readonly type = "number"
-
-  min(min: number) {
-    return this._with("min", min)
-  }
-
-  max(max: number) {
-    return this._with("max", max)
-  }
-
-  above(above: number) {
-    return this._with("above", above)
-  }
-
-  below(below: number) {
-    return this._with("below", below)
-  }
-
-  step(step: number) {
-    return this._with("step", step)
-  }
-
-  integer(integer: boolean = true) {
-    return this._with("integer", integer)
-  }
-
-  example(): number {
-    const min = this.rules.min || this.rules.above || 0
-    const max = this.rules.max || this.rules.below || 0
-    let value = min + Math.random() * (max - min)
-    if (this.rules.integer) {
-      return Math.round(value)
+    min(minimum: number) {
+        return this.minimum(minimum);
     }
 
-    return this.rules.step ? Math.floor(value / this.rules.step) * this.rules.step : value
-  }
-
-  protected _validate(item: number, name: string, { integer, min, max, above, below, step }: KeyValue): number {
-    if (integer && !Number.isInteger(item)) {
-      throw new ValidatorError(`"${name}" should be integer`, name, "integer", integer)
+    minimum(minimum: number) {
+        return this.set("minimum", minimum);
     }
 
-    if (min !== undefined && item < min) {
-      throw new ValidatorError(`"${name}" should be at least ${min}`, name, "min", min)
+    max(maximum: number) {
+        return this.maximum(maximum);
     }
 
-    if (max !== undefined && item > max) {
-      throw new ValidatorError(`"${name}" should be at most ${max}`, name, "max", max)
+    maximum(maximum: number) {
+        return this.set("maximum", maximum);
     }
 
-    if (above !== undefined && item <= above) {
-      throw new ValidatorError(`"${name}" should be above ${above}`, name, "above", above)
+    above(above: number) {
+        return this.exclusiveMinimum(above);
     }
 
-    if (below !== undefined && item >= below) {
-      throw new ValidatorError(`"${name}" should be below ${below}`, name, "below", below)
+    exclusiveMinimum(exclusiveMinimum: number) {
+        return this.set("exclusiveMinimum", exclusiveMinimum);
     }
 
-    if (step !== undefined && (item / step) % 1) {
-      throw new ValidatorError(`"${name}" should be step ${step}`, name, "step", step)
+    below(below: number) {
+        return this.exclusiveMaximum(below);
     }
 
-    return item
-  }
+    exclusiveMaximum(exclusiveMaximum: number) {
+        return this.set("exclusiveMaximum", exclusiveMaximum);
+    }
+
+    step(step: number) {
+        return this.multipleOf(step);
+    }
+
+    multipleOf(multipleOf: number) {
+        return this.set("multipleOf", multipleOf);
+    }
+
+    integer(integer: boolean = true) {
+        return this.set("integer", integer);
+    }
+
+    example(): number {
+        const min = this.rules.minimum || this.rules.exclusiveMinimum || 0;
+        const max = this.rules.maximum || this.rules.exclusiveMaximum || 0;
+        let value = min + Math.random() * (max - min);
+        if (this.rules.integer) {
+            return Math.round(value);
+        }
+
+        return this.rules.multipleOf ? Math.floor(value / this.rules.multipleOf) * this.rules.multipleOf : value;
+    }
+
+    protected _compile(c: Compiler, { integer, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf }: KeyValue) {
+        checkType(c, Type.number);
+
+        if (integer) {
+            c`if (!Number.isInteger($)) throw new TypeError($$ + " should be an integer");`;
+        }
+
+        if (typeof minimum === Type.number) {
+            c`if ($ < ${minimum}) throw new TypeError($$ + " should be at least ${minimum}");`;
+        }
+
+        if (typeof maximum === Type.number) {
+            c`if ($ > ${maximum}) throw new TypeError($$ + " should be at most ${maximum}");`;
+        }
+
+        if (typeof exclusiveMinimum === Type.number) {
+            c`if ($ <= ${exclusiveMinimum}) throw new TypeError($$ + " should be above ${exclusiveMinimum}");`;
+        }
+
+        if (typeof exclusiveMaximum === Type.number) {
+            c`if ($ >= ${exclusiveMaximum}) throw new TypeError($$ + " should be below ${exclusiveMaximum}");`;
+        }
+
+        if (typeof multipleOf === Type.number) {
+            c`if (($/${multipleOf})%1) throw new TypeError($$ + " should be multiple of ${multipleOf}");`;
+        }
+    }
 }
 
 export class ObjectValidator<T extends KeyValue = {}> extends Validator<T> {
-  readonly type = "object"
-
-  schema<S>(schema: { [K in keyof S]: Validator<S[K]> }): ObjectValidator<S> {
-    return this._with("schema", schema) as any
-  }
-
-  other<O>(other?: Validator<O>): ObjectValidator<{ [key: string]: O } & T> {
-    if (!other) {
-      return this._with("other", true)
+    schema<S>(schema: { [K in keyof S]: Validator<S[K]> }): ObjectValidator<S> {
+        return this.set("schema", schema) as any;
     }
 
-    return this._with("other", other)
-  }
-
-  protected _validate(item: T, name: string, rules: KeyValue): T {
-    const result = {} as T
-
-    if (rules.schema) {
-      for (const key in rules.schema) {
-        if (rules.schema.hasOwnProperty(key)) {
-          const value = rules.schema[key].validate(item[key], `${name}.${key}`)
-          if (value !== undefined) {
-            result[key] = value
-          }
+    other<O>(other?: Validator<O>): ObjectValidator<{ [key: string]: O; } & T> {
+        if (!other) {
+            return this.set("other", true);
         }
-      }
+
+        return this.set("other", other);
     }
 
-    if (rules.other) {
-      for (const key in item) {
-        if (item.hasOwnProperty(key) && (!rules.schema || !rules.schema.hasOwnProperty(key))) {
-          if (rules.other === true) {
-            result[key] = item[key]
-          } else {
-            const value = rules.other.validate(item[key], `${name}.${key}`)
+    maxProperties(maxProperties: number) {
+        return this.set("maxProperties", maxProperties);
+    }
 
-            if (value !== undefined) {
-              result[key] = value
+    minProperties(minProperties: number) {
+        return this.set("minProperties", minProperties);
+    }
+
+    protected _compile(c: Compiler, rules: KeyValue): T {
+        checkType(c, Type.object);
+
+        const result = {} as T;
+
+        if (typeof rules.minProperties === Type.number) {
+            c.props();
+            c`if (props.length < ${rules.minProperties}) throw new TypeError($$ + " should have at least ${rules.minProperties}" + ${rules.minProperties === 1 ? "property" : "properties"})`;
+        }
+
+        if (typeof rules.maxProperties === Type.number) {
+            c.props();
+            c`if (props.length > ${rules.maxProperties}) throw new TypeError($$ + " should have at most ${rules.maxProperties}" + ${rules.maxProperties === 1 ? "property" : "properties"})`;
+        }
+
+        if (rules.schema) {
+            for (const key in rules.schema) {
+                c`$[${key}] = ${rules.schema[key].compile()}($[${key}], $$ + "." + ${key});`;
             }
-          }
         }
-      }
-    } else {
-      for (const key in item) {
-        if (item.hasOwnProperty(key) && !rules.schema.hasOwnProperty(key)) {
-          throw new ValidatorError(`"${name}" has key ${key} which is not expected`, name, "other", null)
+
+        if (rules.other) {
+            c`const keys2 = ${Object.keys(rules.schema)};`;
+            const fn = rules.other.compile();
+            c`for (const key in $) if (keys2.indexOf(key) < 0) $[key] = ${fn}($[key], $$ + "." + key);`;
+        } else {
+            c`const keys2 = ${Object.keys(rules.schema)};`;
+            c`for (const key in $) if (keys2.indexOf(key) < 0) throw new TypeError($$ + ' has key "' + '" which is not expected');`;
         }
-      }
+
+        return result;
     }
 
-    return result
-  }
-
-  example(): T {
-    const example = {} as T
-    if (this.rules.schema) {
-      for (const key in this.rules.schema) {
-        if (this.rules.schema.hasOwnProperty(key)) {
-          example[key] = this.rules.schema[key].example()
+    example(): T {
+        const example = {} as T;
+        if (this.rules.schema) {
+            for (const key in this.rules.schema) {
+                if (this.rules.schema.hasOwnProperty(key)) {
+                    //@ts-ignore
+                    example[key] = this.rules.schema[key].example();
+                }
+            }
         }
-      }
-    }
 
-    return example
-  }
+        return example;
+    }
 }
-
 
 export class BinaryValidator extends Validator<Buffer> {
-  readonly type = "object"
-
-  length(length: number): this {
-    return this._with("length", length)
-  }
-
-  min(min: number): this {
-    return this._with("min", min)
-  }
-
-  max(max: number): this {
-    return this._with("max", max)
-  }
-
-  example(): Buffer {
-    if (this.rules.length !== undefined) {
-      return Buffer.allocUnsafe(this.rules.length)
+    length(length: number): this {
+        return this.set("length", length);
     }
 
-    const min = this.rules.min || 0
-    const max = this.rules.max || 64
-    return Buffer.allocUnsafe(min + Math.floor(Math.random() * (max - min)))
-  }
-
-  protected _validate(item: Buffer, name: string, { length, min, max }: KeyValue): Buffer {
-    if (!(item instanceof Buffer)) {
-      throw new ValidatorError(`"${name}" should be instance of Buffer`, name, "type", "buffer")
+    min(min: number): this {
+        return this.set("min", min);
     }
 
-    if (length !== undefined && item.length !== length) {
-      throw new ValidatorError(`"${name}" length should equal ${length}`, name, "length", length)
+    max(max: number): this {
+        return this.set("max", max);
     }
 
-    if (min !== undefined && item.length < min) {
-      throw new ValidatorError(`"${name}" length should be at least ${min}`, name, "min", min)
+    example(): Buffer {
+        if (this.rules.length !== undefined) {
+            return Buffer.allocUnsafe(this.rules.length);
+        }
+
+        const min = this.rules.min || 0;
+        const max = this.rules.max || 64;
+        return Buffer.allocUnsafe(min + Math.floor(Math.random() * (max - min)));
     }
 
-    if (max !== undefined && item.length > max) {
-      throw new ValidatorError(`"${name}" length should be at most ${max}`, name, "max", max)
-    }
+    protected _compile(c: Compiler, { length, min, max }: KeyValue) {
+        checkType(c, Type.buffer);
 
-    return item
-  }
+        if (typeof length === Type.number) {
+            c`if ($.length !== ${length}) throw new TypeError($$ + " should have length ${length}")`;
+        }
+
+        if (typeof min === "number") {
+            c`if ($.length < ${min}) throw new TypeError($$ + " length should be at least ${min}")`;
+        }
+
+        if (typeof max === "number") {
+            c`if ($.length > ${max}) throw new TypeError($$ + " length should be at most ${max}")`;
+        }
+    }
 }
 
-
 export class ArrayValidator<T = any> extends Validator<T[]> {
-  readonly type = "array"
-
-  of<V>(of: Validator<V>): ArrayValidator<V> {
-    return this._with("of", of) as any
-  }
-
-  length(length: number): this {
-    return this._with("length", length)
-  }
-
-  min(min: number): this {
-    return this._with("min", min)
-  }
-
-  max(max: number): this {
-    return this._with("max", max)
-  }
-
-  example() {
-    let min = this.rules.min || 0
-    let max = this.rules.max || 8
-
-    if (this.rules.length !== undefined) {
-      min = max = this.rules.lenght
+    items<V>(items: Validator<V>): ArrayValidator<V> {
+        return this.set("items", items) as any;
     }
 
-    const result: T[] = []
-    for (let i = 0, l = Math.floor(min + Math.random() * (max - min)); i < l; i++) {
-      if (this.rules.of === undefined) {
-        result.push((Math.random() < 0.5) as any)
-      } else {
-        result.push(this.rules.of.example())
-      }
-    }
-    return result
-  }
-
-  protected _validate(item: T[], name: string, { length, min, max, of }: KeyValue): T[] {
-    if (length !== undefined && item.length !== length) {
-      throw new ValidatorError(`"${name}" length should be ${length}`, name, "length", length)
+    length(length: number): this {
+        return this.set("length", length);
     }
 
-    if (min !== undefined && item.length < min) {
-      throw new ValidatorError(`"${name}" length should be at least ${min}`, name, "min", min)
+    uniqueItems() {
+        return this.set("uniqueItems", true);
     }
 
-    if (max !== undefined && item.length > max) {
-      throw new ValidatorError(`"${name}" length should be at most ${max}`, name, "max", max)
+    min(min: number): this {
+        return this.minItems(min);
     }
 
-    if (of) {
-      for (let i = 0, l = item.length; i < l; i++) {
-        item[i] = of.validate(item[i], `${name}[${i}]`)
-      }
+    minItems(minItems: number) {
+        return this.set("minItems", minItems);
     }
 
-    return item
-  }
+    max(max: number): this {
+        return this.maxItems(max);
+    }
+
+    maxItems(maxItems: number) {
+        return this.set("maxItems", maxItems);
+    }
+
+    example() {
+        let min = this.rules.minItems || 0;
+        let max = this.rules.maxItems || 8;
+
+        if (this.rules.length !== undefined) {
+            min = max = this.rules.lenght;
+        }
+
+        const result: T[] = [];
+        for (let i = 0, l = Math.floor(min + Math.random() * (max - min)); i < l; i++) {
+            if (this.rules.items === undefined) {
+                result.push((Math.random() < 0.5) as any);
+            } else {
+                result.push(this.rules.items.example());
+            }
+        }
+        return result;
+    }
+
+    protected _compile(c: Compiler, { length, minItems, maxItems, items, uniqueItems }: KeyValue) {
+        checkType(c, Type.array);
+
+        if (typeof length === Type.number) {
+            c`if ($.length !== ${length}) throw new TypeError($$ + " length should be ${length}")`;
+        }
+
+        if (typeof minItems === Type.number) {
+            c`if ($.length < ${minItems}) throw new TypeError($$ + " should have at least ${minItems} ")`;
+        }
+
+        if (typeof maxItems === Type.number) {
+            c`if ($.length > ${maxItems}) throw new TypeError($$ + " length should be at most ${maxItems}")`;
+        }
+
+        if (uniqueItems) {
+            c`for(let i = 0, l = $.length - 1; i < l; i++) for(let j = i+1; j <= l; ++j) if (${equal}($[i], $[j])) return new TypeError($$ + " should be unique");`;
+        }
+
+        if (items) {
+            const fn = items.compile();
+            c`for (let i = 0, l = $.length; i < l; i++) $[i] = ${fn}($[i], $$ + "[" + i + "]");`;
+        }
+    }
 }
 
 export class EqualValidator<T> extends Validator<T> {
-  protected _equal(a: any, b: any, name: string) {
-    let t1 = type(a)
-    let t2 = type(b)
-
-    if (t1 !== t2) {
-      throw new ValidatorError(`"${name}" should have type ${t2}, got ${t1}`, name, "type", t2)
+    example(): T {
+        return this.rules.equal;
     }
 
-    if (t1 === "object") {
-      for (const key in a) {
-        if (a.hasOwnProperty(key) && !b.hasOwnProperty(key)) {
-          throw new ValidatorError(`"${name}.${key}" is not expected`, name, "equal.unexpected", key)
-        }
-      }
-
-      for (const key in b) {
-        if (b.hasOwnProperty(key)) {
-          this._equal(a[key], b[key], `${name}.${key}`)
-        }
-      }
-      return true
+    protected _compile(c: Compiler, rules: KeyValue) {
+        c`if (!${isEqual}($, ${rules.equal})) throw new TypError($$ + " should equal " + ${JSON.stringify(rules.equal)});`;
     }
 
-    if (t1 === "array") {
-      const l = a.length
-
-      if (l !== b.length) {
-        throw new ValidatorError(`"${name}" length should be ${b.length}`, name, "length", b.length)
-      }
-
-      for (let i = 0; i < l; i++) {
-        this._equal(a[i], b[i], `${name}[${i}]`)
-      }
-
-      return true
+    constructor(value: T) {
+        super();
+        this.rules.equal = value;
     }
-
-    if (a !== b) {
-      throw new ValidatorError(`"${name}" should equal ${b}`, name, "equal", b)
-    }
-
-    return true
-  }
-
-  example(): T {
-    return this.rules.equal
-  }
-
-  protected _validate(item: T, name: string, rules: KeyValue): T {
-    this._equal(item, rules.equal, name)
-    return item
-  }
-
-  constructor(value: T) {
-    super()
-    this.rules.equal = value
-  }
 }
 
 export class AnyValidator<T = any> extends Validator<T> {
-  oneOf(...values: T[]) {
-    this.rules.oneOf = values
-    return this
-  }
-
-  maybe<V>(...maybe: Array<Validator<V> | V>): AnyValidator<V> {
-    return this._with("maybe", maybe.map(item => {
-      if (item instanceof Validator) {
-        return item
-      }
-
-      return equal(item)
-    })) as any
-  }
-
-  example(): T {
-    if (this.rules.oneOf) {
-      return this.rules.oneOf[Math.floor(Math.random() * this.rules.oneOf.lenght)]
+    oneOf(...values: T[]) {
+        this.rules.oneOf = values;
+        return this;
     }
 
-    if (this.rules.maybe && this.rules.maybe.lenght) {
-      return this.rules.maybe[Math.floor(Math.random() * this.rules.maybe.lenght)].example()
+    maybe<V>(...maybe: Array<Validator<V> | V>): AnyValidator<V> {
+        return this.set("maybe", maybe.map(item => {
+            if (item instanceof Validator) {
+                return item;
+            }
+
+            return equal(item);
+        })) as any;
     }
 
-    return null as any
-  }
-
-  protected _validate(item: T, name: string, rules: this["rules"]): T {
-    if (rules.maybe && rules.maybe.length > 0) {
-      const errors = []
-      const errs: any = []
-
-      for (const check of rules.maybe) {
-        try {
-          return check.validate(item, name)
-        } catch (e) {
-          errs.push(e)
-          errors.push(e.message)
+    example(): T {
+        if (this.rules.oneOf) {
+            return this.rules.oneOf[Math.floor(Math.random() * this.rules.oneOf.lenght)];
         }
-      }
 
-      throw new ValidatorError(errors.join(" or "), name, "many", errs)
+        if (this.rules.maybe && this.rules.maybe.lenght) {
+            return this.rules.maybe[Math.floor(Math.random() * this.rules.maybe.lenght)].example();
+        }
+
+        return null as any;
     }
 
-    if (rules.oneOf) {
-      const found = this.rules.oneOf.some((example: any) => isEqual(example, item))
+    protected _compile(c: Compiler, { maybe, oneOf }: KeyValue) {
+        if (maybe && maybe.length) {
+            c`const errors = [];`;
+            for (const check of maybe) {
+                c`try { return ${check.compile()}($, $$); } catch(e) { errors.push(e.message); }`;
+            }
+            c`throw new TypeError(errors.join(" or "));`;
+            return;
+        }
 
-      if (!found) {
-        throw new ValidatorError(`"${name}" has unexpected value`, name, "notExpected", undefined)
-      }
+        if (oneOf && oneOf.length) {
+            c`const oneOf = this[${c.dep(oneOf, true)}];`;
+            c`const found = oneOf.some(example => ${isEqual}($, example));`;
+            c`if (!found) throw new TypeError($$ + " has unexpected value");`;
+        }
     }
-
-    return item
-  }
 }
 
 export function binary(): BinaryValidator {
-  return new BinaryValidator()
+    return new BinaryValidator();
 }
 
 export function boolean(): BooleanValidator {
-  return new BooleanValidator()
+    return new BooleanValidator();
 }
 
 export function number(): NumberValidator {
-  return new NumberValidator()
+    return new NumberValidator();
+}
+
+export function integer(): NumberValidator {
+    return new NumberValidator().integer();
 }
 
 export function string(): StringValidator {
-  return new StringValidator()
+    return new StringValidator();
 }
 
 export function object<T>(schema?: { [K in keyof T]: Validator<T[K]> }): ObjectValidator<T> {
-  const v = new ObjectValidator<T>()
-  return schema ? v.schema(schema) : v
+    const v = new ObjectValidator<T>();
+    return schema ? v.schema(schema) : v;
 }
 
-export function array<T>(of?: Validator<T>): ArrayValidator<T> {
-  const v = new ArrayValidator<T>()
-  return of ? v.of(of) : v
+export function array<T>(items?: Validator<T>): ArrayValidator<T> {
+    const v = new ArrayValidator<T>();
+    return items ? v.items(items) : v;
 }
 
 export function any<T>(...maybe: Validator<any>[]): AnyValidator<T> {
-  const v = new AnyValidator<T>()
-  return v.maybe(...maybe)
+    const v = new AnyValidator<T>();
+    return v.maybe(...maybe);
 }
 
 export function equal<T>(item: T): EqualValidator<T> {
-  return new EqualValidator<T>(item)
-}
-
-function type(item: any): "null" | "undefined" | "boolean" | "number" | "string" | "object" | "array" | "symbol" | "function" {
-  const type = typeof item
-
-  if (type !== "object") {
-    return type
-  }
-
-  if (item === null) {
-    return "null"
-  }
-
-  return Array.isArray(item) ? "array" : item
-}
-
-function clone<T>(item: T): T {
-  if (!item || typeof item !== "object") {
-    return item
-  }
-
-  if (Array.isArray(item)) {
-    return item.map(clone) as any
-  }
-
-  const obj = {} as T
-
-  for (const key in item) {
-    if (item.hasOwnProperty(key)) {
-      obj[key] = item[key]
-    }
-  }
-
-  return obj
+    return new EqualValidator<T>(item);
 }
 
 function oneOf<T>(...values: T[]) {
-  const v = new AnyValidator<T>()
-  return v.oneOf(...values)
+    const v = new AnyValidator<T>();
+    return v.oneOf(...values);
 }
 
 export interface ValidateBuilder {
-  boolean(): BooleanValidator
-  binary(): BinaryValidator
-  number(): NumberValidator
-  string(): StringValidator
-  object<T>(schema?: { [K in keyof T]: Validator<T[K]> }): ObjectValidator<T>
-  array<T>(of?: Validator<T>): ArrayValidator<T>
-  equal<T>(item: T): EqualValidator<T>
-  any<T>(...maybe: Validator<T>[]): AnyValidator<T>
-  oneOf<T>(...values: T[]): AnyValidator<T>
+    boolean(): BooleanValidator;
+    binary(): BinaryValidator;
+    number(): NumberValidator;
+    integer(): NumberValidator;
+    string(): StringValidator;
+    object<T>(schema?: { [K in keyof T]: Validator<T[K]> }): ObjectValidator<T>;
+    array<T>(of?: Validator<T>): ArrayValidator<T>;
+    equal<T>(item: T): EqualValidator<T>;
+    any<T>(...maybe: Validator<T>[]): AnyValidator<T>;
+    oneOf<T>(...values: T[]): AnyValidator<T>;
 }
 
-export default {
-  boolean,
-  binary,
-  number,
-  string,
-  object,
-  array,
-  equal,
-  oneOf,
-  any
-} as ValidateBuilder
+export const v: ValidateBuilder = {
+    boolean,
+    binary,
+    number,
+    integer,
+    string,
+    object,
+    array,
+    equal,
+    oneOf,
+    any
+};
+
+export default v;
