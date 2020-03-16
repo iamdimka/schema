@@ -1,6 +1,6 @@
 export const enum Type {
     boolean = "boolean",
-    buffer = "buffer",
+    binary = "binary",
     number = "number",
     null = "null",
     integer = "integer",
@@ -10,78 +10,68 @@ export const enum Type {
     function = "function"
 }
 
+if (!Number.isInteger) {
+    Number.isInteger = n => Math.floor(n) === n;
+}
+
+if (!Array.isArray) {
+    Array.isArray = (arg: any): arg is any[] => Object.prototype.toString.call(arg) === '[object Array]';
+}
+
 export interface KeyValue<V = any> {
     [key: string]: V;
 };
 
 export type Result<T> = T extends (...args: any[]) => infer U ? U : any;
 
-export function type($: any): Type {
-    const type = typeof $;
-
-    if (type !== Type.object) {
-        return type as Type;
-    }
-
-    if ($ === null) {
-        return Type.null;
-    }
-
-    if (Array.isArray($)) {
-        return Type.array;
-    }
-
-    if (Buffer.isBuffer($)) {
-        return Type.buffer;
-    }
-
-    return type as Type;
+export function plural(value: number, plural = "s", one = ""): string {
+    return value === 1 ? one : plural;
 }
 
-export function isEqual(a: any, b: any, depth: number = 1e3): boolean {
-    if (depth < 0) {
-        return false;
+export function safe(path: string): string {
+    return path.replace(/(")/g, "\\$1");
+}
+
+export function objectKey(name: string, key: string | number): string {
+    if (typeof key === "number") {
+        return `${name}[${key}]`;
     }
 
-    const typeOfA = typeof a;
+    return /^[a-z$_][a-z0-9_$]*$/i.test(key) ? `${name}.${key}` : `${name}[${JSON.stringify(key)}]`;
+}
 
-    if (typeOfA !== "object") {
-        return a === b;
+export function json(value: any): any {
+    if (!value || typeof value !== "object") {
+        return value;
     }
 
-    if (typeof b !== typeOfA) {
-        return false;
+    if (Array.isArray(value)) {
+        return value.map(json);
     }
 
-    const isArrayB = Array.isArray(b);
-
-    if (Array.isArray(a)) {
-        if (!isArrayB) {
-            return false;
-        }
-
-        if (a.length !== b.length) {
-            return false;
-        }
-
-        return a.every((item, i) => isEqual(item, b[i], depth - 1));
-    }
-
-    if (isArrayB) {
-        return false;
-    }
-
-    for (const key in a) {
-        if (!isEqual(a[key], b[key], depth - 1)) {
-            return false;
+    if (typeof value.toJSON === "function") {
+        const next = value.toJSON();
+        if (next !== value) {
+            return json(next);
         }
     }
 
-    for (const key in b) {
-        if (!a.hasOwnProperty(key) && !isEqual(a[key], b[key], depth - 1)) {
-            return false;
-        }
+    const obj: any = {};
+    for (const key in value) {
+        obj[key] = json(value[key]);
     }
+    return obj;
+}
 
-    return true;
+export function isObjectType(type: string): boolean {
+    switch (type) {
+        case Type.array:
+        case Type.object:
+        case Type.null:
+        case Type.binary:
+            return true;
+
+        default:
+            return false;
+    }
 }

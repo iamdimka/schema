@@ -1,3 +1,3 @@
 # @iamdimka/schema
 
-Simple schema validation 
+ugly inside, fast in practice

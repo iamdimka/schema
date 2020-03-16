@@ -9,6 +9,7 @@
     "lib": [
       "es6"
     ],
+    "esModuleInterop": true,
     "outDir": "./lib"
   },
   "include": [
