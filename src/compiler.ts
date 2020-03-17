@@ -288,7 +288,7 @@ extend(Type.object, "required", (required, name, path, rules, config) => {
 
     for (const key of required) {
         config.hookHop = true;
-        fn += `if(!hop.call(${name}, "${key}"))throw new Error("${safe(path)}[\\\"${key}\\\"] required");`;
+        fn += `if(!hop.call(${name}, "${safe(key)}"))throw new Error("${safe(objectKey(path, key))} required");`;
     }
     return fn;
 });
@@ -302,7 +302,7 @@ extend(Type.object, "dependencies", (dependencies, name, path, rules, config) =>
         const entry = dependencies[key];
         if (Array.isArray(entry)) {
             for (const dep of dependencies[key]) {
-                fn += `if(!hop.call(${name}, ${JSON.stringify(dep)})) throw new Error("${safe(objectKey(path, dep))} required if ${safe(objectKey(path, key))} presented");`;
+                fn += `if(!hop.call(${name}, "${safe(dep)}")) throw new Error("${safe(objectKey(path, dep))} required if ${safe(objectKey(path, key))} presented");`;
             }
         } else if (entry && typeof entry === "object") {
             for (const k in entry) {
@@ -337,11 +337,11 @@ extend(Type.object, "properties", (properties, name, path, rules, config) => {
         config.hookHop = true;
         const isRequired = rules.required && rules.required.indexOf(key) >= 0;
         if (!isRequired) {
-            fn += `if(hop.call(${name}, ${JSON.stringify(key)})){`;
+            fn += `if(hop.call(${name}, "${safe(key)}")){`;
         }
         const property = properties[key];
         const nextVar = config.varName();
-        const nextPath = objectKey(path, key);
+        const nextPath = objectKey(name, key);
         fn += `var ${nextVar}=${nextPath};`;
         fn += write(nextVar, objectKey(path, key), property, config);
         if (config.assignItems) {

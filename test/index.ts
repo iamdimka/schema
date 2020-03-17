@@ -358,3 +358,83 @@ check(v.object({
     ok: [{ a: 1 }, { a: 1, b: "abcc", x: "xx" }],
     err: [{ a: "string" }, { a: 1, b: 3 }]
 });
+
+check(v.object({
+    app: v.integer(),
+    title: v.string().minLength(1),
+    groups: v.array(
+        v.object({
+            title: v.string(),
+            values: v.object().minProperties(1).additionalProperties(true),
+            percent: v.number().exclusiveMinimum(0)
+        })
+    ).minItems(1),
+    start: v.integer(),
+    end: v.integer(),
+    includeDepositors: v.boolean()
+}), {
+    schema: {
+        type: "object",
+        properties: {
+            app: {
+                type: "integer"
+            },
+            title: {
+                type: "string",
+                minLength: 1
+            },
+            groups: {
+                type: "array",
+                items: {
+                    type: "object",
+                    properties: {
+                        title: {
+                            type: "string"
+                        },
+                        values: {
+                            type: "object",
+                            minProperties: 1,
+                            additionalProperties: true
+                        },
+                        percent: {
+                            type: "number",
+                            exclusiveMinimum: 0
+                        }
+                    },
+                    required: ["title", "values", "percent"],
+                    additionalProperties: false
+                },
+                minItems: 1
+            },
+            start: {
+                type: "integer"
+            },
+            end: {
+                type: "integer"
+            },
+            includeDepositors: {
+                type: "boolean"
+            }
+        },
+        additionalProperties: false,
+        required: ["app", "title", "groups", "start", "end", "includeDepositors"]
+    },
+    ok: [
+        {
+            app: 1,
+            title: "abc",
+            groups: [
+                {
+                    title: "abc",
+                    values: {
+                        a: 1
+                    },
+                    percent: 0.2
+                }
+            ],
+            start: 100,
+            end: 2000000,
+            includeDepositors: true
+        }
+    ]
+});
