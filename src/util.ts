@@ -62,16 +62,3 @@ export function json(value: any): any {
     }
     return obj;
 }
-
-export function isObjectType(type: string): boolean {
-    switch (type) {
-        case Type.array:
-        case Type.object:
-        case Type.null:
-        case Type.binary:
-            return true;
-
-        default:
-            return false;
-    }
-}

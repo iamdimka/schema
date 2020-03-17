@@ -1,14 +1,14 @@
-import { Type, KeyValue, plural, safe, objectKey, isObjectType } from "./util";
+import { Type, KeyValue, plural, safe, objectKey } from "./util";
 
 const eq = [
     'function eq(a,b){if(a===b)return true;if(!a||!b||typeof a!=="object"||typeof b!=="object")return false;if(a.constructor!==b.constructor)return false;',
     'var l;',
     'if(Array.isArray(a)){l=a.length;if(l!==b.length)return false;while(l--)if(!eq(a[l],b[l]))return false;return true;}',
-    'var keys=Object.keys(a);l=keys.length;if(l!==Object.keys(b).length)return false;while(l--)if(!hop.call(b,keys[l]))return false;',
+    'var keys=Object.keys(a);l=keys.length;if(l!==Object.keys(b).length)return false;while(l--)if(b[keys[l]]===undefined)return false;',
     'l=keys.length;var key;while(l--){key=keys[l];if(!eq(a[key], b[key]))return false;}return true;}'
 ].join("");
 
-let binaryType = "uint8array";
+let binaryType = "[object Uint8Array]";
 
 export function setBinaryType(nameOrInstance: any) {
     binaryType = typeof nameOrInstance === "string" ? nameOrInstance.toLowerCase() : Object.prototype.toString.call(nameOrInstance).slice(8, -1).toLowerCase();
@@ -284,11 +284,13 @@ extend(Type.object, "maxProperties", (maxProperties, name, path, rules, config) 
 });
 
 extend(Type.object, "required", (required, name, path, rules, config) => {
+    const hop = Object.prototype.hasOwnProperty;
     let fn = "";
 
     for (const key of required) {
-        config.hookHop = true;
-        fn += `if(!hop.call(${name}, "${safe(key)}"))throw new Error("${safe(objectKey(path, key))} required");`;
+        if (!rules.properties || !hop.call(rules.properties, key)) {
+            fn += `if(${objectKey(name, key)}===undefined))throw new Error("${safe(objectKey(path, key))} required");`;
+        }
     }
     return fn;
 });
@@ -297,19 +299,18 @@ extend(Type.object, "dependencies", (dependencies, name, path, rules, config) =>
     let fn = "";
 
     for (const key in dependencies) {
-        config.hookHop = true;
-        fn += `if(hop.call(${name}, "${safe(key)}")){`;
+        fn += `if(${objectKey(name, key)} !== undefined){`;
         const entry = dependencies[key];
         if (Array.isArray(entry)) {
             for (const dep of dependencies[key]) {
-                fn += `if(!hop.call(${name}, "${safe(dep)}")) throw new Error("${safe(objectKey(path, dep))} required if ${safe(objectKey(path, key))} presented");`;
+                fn += `if(${objectKey(name, dep)}===undefined) throw new Error("${safe(objectKey(path, dep))} required if ${safe(objectKey(path, key))} presented");`;
             }
         } else if (entry && typeof entry === "object") {
             for (const k in entry) {
-                fn += `if(!hop.call(${name}, "${safe(k)}")) throw new Error("${safe(objectKey(path, k))} required if ${safe(objectKey(path, key))} presented");`;
                 const nextVar = config.varName();
                 const nextPath = objectKey(name, k);
                 fn += `var ${nextVar}=${nextPath};`;
+                fn += `if(${nextVar}===undefined) throw new Error("${safe(objectKey(path, k))} required if ${safe(objectKey(path, key))} presented");`;
                 fn += write(nextVar, objectKey(path, k), entry[k], config);
             }
         }
@@ -334,15 +335,16 @@ extend(Type.object, "properties", (properties, name, path, rules, config) => {
     }
 
     for (const key in properties) {
-        config.hookHop = true;
-        const isRequired = rules.required && rules.required.indexOf(key) >= 0;
-        if (!isRequired) {
-            fn += `if(hop.call(${name}, "${safe(key)}")){`;
-        }
         const property = properties[key];
         const nextVar = config.varName();
         const nextPath = objectKey(name, key);
         fn += `var ${nextVar}=${nextPath};`;
+        const isRequired = rules.required && rules.required.indexOf(key) >= 0;
+        if (isRequired) {
+            fn += `if(${nextVar}===undefined) throw new Error("${safe(objectKey(path, key))} required");`;
+        } else {
+            fn += `if(${nextVar}!==undefined){`;
+        }
         fn += write(nextVar, objectKey(path, key), property, config);
         if (config.assignItems) {
             fn += `${nextPath}=${nextVar};`;
@@ -401,7 +403,6 @@ interface CompilerConfig {
     assignItems?: boolean;
     hookEqual?: boolean;
     hookToString?: boolean;
-    hookHop?: boolean;
     ctx: KeyValue;
     varName(): string;
 }
@@ -413,7 +414,7 @@ export default function compile(schema: KeyValue, varName: string = "$") {
         varName: () => `v${i++}`
     };
 
-    let fn = write(varName, varName, schema, config) + `return ${varName}`;
+    let fn = write(varName, varName, schema, config) + `return ${varName};`;
 
     if (config.hookToString) {
         fn = `var toString = Object.prototype.toString;${fn}`;
@@ -421,10 +422,6 @@ export default function compile(schema: KeyValue, varName: string = "$") {
 
     if (config.hookEqual) {
         fn = eq + fn;
-    }
-
-    if (config.hookHop || config.hookEqual) {
-        fn = `var hop = Object.prototype.hasOwnProperty;${fn}`;
     }
 
     return new Function(varName, `"use strict";\n${fn}`) as (v: any) => any;
@@ -456,15 +453,7 @@ function getTypes(schema: KeyValue): string[] {
 function write(varName: string, path: string, schema: KeyValue, config: CompilerConfig) {
     let next = false;
     const types = getTypes(schema);
-    // const intN = types.indexOf(Type.integer);
-    // if (intN >= 0) {
-    //     if (types.indexOf("number") < 0) {
-    //         types[intN] = "number";
-    //         checkInteger = true;
-    //     } else {
-    //         types.splice(intN, 1);
-    //     }
-    // }
+
     let fn = "";
 
     if ("default" in schema) {
@@ -496,14 +485,14 @@ function write(varName: string, path: string, schema: KeyValue, config: Compiler
         return fn + `if(${check})throw new Error("${safe(path)} should be one of ${safe(values)}");`;
     }
 
-    fn += `var t${varName}=typeof ${varName};`;
+    // fn += `var t${varName}=typeof ${varName};`;
 
-    if (types.some(isObjectType)) {
-        config.hookToString = true;
-        const strVar = config.varName();
-        fn += `if(t${varName}==="${Type.object}"){var ${strVar}=toString.call(${varName});t${varName}=${strVar}.substring(8, ${strVar}.length-1).toLowerCase();}`;
-        // fn += `if(t${varName}==="${Type.object}"){if(${varName}===null){t${varName}="${Type.null}";}else if(Array.isArray(${varName})){t${varName}="${Type.array}";}}`;
-    }
+    // if (types.some(isObjectType)) {
+    //     config.hookToString = true;
+    //     const strVar = config.varName();
+    //     fn += `if(t${varName}==="${Type.object}"){var ${strVar}=toString.call(${varName});t${varName}=${strVar}.substring(8, ${strVar}.length-1).toLowerCase();}`;
+    //     // fn += `if(t${varName}==="${Type.object}"){if(${varName}===null){t${varName}="${Type.null}";}else if(Array.isArray(${varName})){t${varName}="${Type.array}";}}`;
+    // }
 
     for (let type of types) {
         if (next) {
@@ -512,12 +501,19 @@ function write(varName: string, path: string, schema: KeyValue, config: Compiler
             next = true;
         }
 
-        if (type === "integer") {
-            fn += `if(t${varName}==="${Type.number}"&&Number.isInteger(${varName})){`;
+        if (type === Type.null) {
+            fn += `if(${varName}===null){`;
+        } else if (type === "integer") {
+            fn += `if(typeof ${varName}==="${Type.number}"&&Number.isInteger(${varName})){`;
+        } else if (type === Type.array) {
+            fn += `if(Array.isArray(${varName})){`;
+        } else if (type === Type.object) {
+            fn += `if(${varName} && typeof ${varName} === "object" && !Array.isArray(${varName})){`;
         } else if (type === "binary") {
-            fn += `if(t${varName}==="${binaryType}"){`;
+            config.hookToString = true;
+            fn += `if(toString.call(${varName})==="${binaryType}"){`;
         } else {
-            fn += `if(t${varName}==="${type}"){`;
+            fn += `if(typeof ${varName}==="${type}"){`;
         }
 
         if (order.hasOwnProperty(type)) {
