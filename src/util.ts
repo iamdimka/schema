@@ -10,6 +10,25 @@ export const enum Type {
     function = "function"
 }
 
+const checkOrder: string[] = [Type.null, Type.array, Type.binary, Type.object, Type.number, Type.integer, Type.function, Type.boolean, Type.string];
+export function sortTypes(typeA: string, typeB: string) {
+    const a = checkOrder.indexOf(typeA);
+    const b = checkOrder.indexOf(typeB);
+    if (a === -1 && b === -1) {
+        return typeA.localeCompare(typeB);
+    }
+
+    if (b === -1) {
+        return -1;
+    }
+
+    if (a === -1) {
+        return 1;
+    }
+
+    return a - b;
+}
+
 if (!Number.isInteger) {
     Number.isInteger = n => Math.floor(n) === n;
 }

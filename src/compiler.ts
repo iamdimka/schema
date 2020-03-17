@@ -1,4 +1,4 @@
-import { Type, KeyValue, plural, safe, objectKey } from "./util";
+import { Type, KeyValue, plural, safe, objectKey, sortTypes } from "./util";
 
 const eq = [
     'function eq(a,b){if(a===b)return true;if(!a||!b||typeof a!=="object"||typeof b!=="object")return false;if(a.constructor!==b.constructor)return false;',
@@ -430,7 +430,7 @@ export default function compile(schema: KeyValue, varName: string = "$") {
 function getTypes(schema: KeyValue): string[] {
     if (schema.type) {
         if (Array.isArray(schema.type)) {
-            return schema.type;
+            return schema.type.slice(0).sort(sortTypes);
         }
 
         return [schema.type];
@@ -447,7 +447,7 @@ function getTypes(schema: KeyValue): string[] {
         }
     }
 
-    return types;
+    return types.sort(sortTypes);
 }
 
 function write(varName: string, path: string, schema: KeyValue, config: CompilerConfig) {
@@ -508,8 +508,17 @@ function write(varName: string, path: string, schema: KeyValue, config: Compiler
         } else if (type === Type.array) {
             fn += `if(Array.isArray(${varName})){`;
         } else if (type === Type.object) {
-            fn += `if(${varName} && typeof ${varName} === "object" && !Array.isArray(${varName})){`;
-        } else if (type === "binary") {
+            let check = `typeof ${varName}==="${Type.object}"`;
+            if (types.indexOf(Type.null) < 0) {
+                //not null
+                check = `${varName}&&${check}`;
+            }
+            if (types.indexOf(Type.array) < 0) {
+                check += `&&!Array.isArray(${varName})`;
+            }
+
+            fn += `if(${check}){`;
+        } else if (type === Type.binary) {
             config.hookToString = true;
             fn += `if(toString.call(${varName})==="${binaryType}"){`;
         } else {
