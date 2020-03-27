@@ -262,6 +262,20 @@ check(v.object({
     err: [{ a: "string" }, { a: 25, b: 3 }]
 });
 
+check(v.raw<number | string>({
+    type: ["integer", "string"],
+    minimum: 0,
+    maxLength: 17
+}), {
+    schema: {
+        type: ["integer", "string"],
+        minimum: 0,
+        maxLength: 17
+    },
+    ok: [1, 0, 10, "string", "ololo"],
+    err: [-1, "123.123.123.1.23.12.3.1.23.1.23.1.2.3.1.23"]
+});
+
 check(v.object({
     a: v.number()
 }).additionalProperties(true), {
@@ -371,7 +385,7 @@ check(v.object({
     ).minItems(1),
     start: v.integer(),
     end: v.integer(),
-    includeDepositors: v.boolean()
+    includeDepositors: v.boolean().optional()
 }), {
     schema: {
         type: "object",
@@ -417,7 +431,7 @@ check(v.object({
             }
         },
         additionalProperties: false,
-        required: ["app", "title", "groups", "start", "end", "includeDepositors"]
+        required: ["app", "title", "groups", "start", "end"]
     },
     ok: [
         {

@@ -29,10 +29,6 @@ export function sortTypes(typeA: string, typeB: string) {
     return a - b;
 }
 
-if (!Number.isInteger) {
-    Number.isInteger = n => Math.floor(n) === n;
-}
-
 if (!Array.isArray) {
     Array.isArray = (arg: any): arg is any[] => Object.prototype.toString.call(arg) === '[object Array]';
 }

@@ -23,6 +23,18 @@ const rules: {
 
 const order: { [key: string]: string[]; } = {};
 
+function orderFunction(type: Type, name: string) {
+    if (!order.hasOwnProperty(type)) {
+        order[type] = [name];
+    } else if (order[type].indexOf(name) < 0) {
+        order[type].push(name);
+    }
+
+    if (type === Type.number) {
+        orderFunction(Type.integer, name);
+    }
+}
+
 function extend(type: Type, rule: string, writer: (param: any, varName: string, path: string, rules: KeyValue, config: CompilerConfig) => string | undefined): void;
 function extend(type: Type, rules: { [rule: string]: (param: any, varName: string, path: string, rules: KeyValue, config: CompilerConfig) => string | undefined; }): void;
 function extend(type: Type, name: any): void {
@@ -40,11 +52,7 @@ function extend(type: Type, name: any): void {
         }
     }
 
-    if (!order.hasOwnProperty(type)) {
-        order[type] = [name];
-    } else if (order[type].indexOf(name) < 0) {
-        order[type].push(name);
-    }
+    orderFunction(type, name);
 
     rules[name] = {
         type,
@@ -55,21 +63,21 @@ function extend(type: Type, name: any): void {
 extend(Type.string, {
     trim(param, name, path, rules, config) {
         if (param) {
-            config.assignItems = true;
+            config.assignItems++;
             return `${name}=${name}.trim();`;
         }
     },
 
     toLower(param, name, path, rules, config) {
         if (param) {
-            config.assignItems = true;
+            config.assignItems++;
             return `${name}=${name}.toLocaleLowerCase();`;
         }
     },
 
     toUpper(param, name, path, rules, config) {
         if (param) {
-            config.assignItems = true;
+            config.assignItems++;
             return `${name}=${name}.toLocaleUpperCase();`;
         }
     }
@@ -241,6 +249,7 @@ extend(Type.array, "items", (items, name, path, rules, config) => {
             fn += `var ${nextVar}=${nextPath};`;
             fn += write(nextVar, objectKey(path, i), items[i], config);
             if (config.assignItems) {
+                config.assignItems--;
                 fn += `${nextPath}=${nextVar};`;
             }
             if (rules.minItems == null || rules.minItems <= i) {
@@ -257,6 +266,7 @@ extend(Type.array, "items", (items, name, path, rules, config) => {
         fn += `for(var i${name}=0,${nextVar};i${name}<l${name};i${name}++){${nextVar}=${name}[i${name}];`;
         fn += write(nextVar, `${path}[*]`, rules.items, config) + "}";
         if (config.assignItems) {
+            config.assignItems--;
             fn += `${name}[i${name}]=${nextVar};`;
         }
 
@@ -335,22 +345,29 @@ extend(Type.object, "properties", (properties, name, path, rules, config) => {
     }
 
     for (const key in properties) {
-        const property = properties[key];
+        let property = properties[key];
         const nextVar = config.varName();
         const nextPath = objectKey(name, key);
+        const hasDefault = "default" in property;
         fn += `var ${nextVar}=${nextPath};`;
-        const isRequired = rules.required && rules.required.indexOf(key) >= 0;
-        if (isRequired) {
+        if (hasDefault) {
+            const { default: defaultValue, ...tmp } = property;
+            property = tmp;
+            fn += `if(${nextVar}===undefined) ${nextVar}=${nextPath}=${JSON.stringify(defaultValue)};`;
+        }
+        const checkRequired = rules.required && rules.required.indexOf(key) >= 0;
+        if (checkRequired) {
             fn += `if(${nextVar}===undefined) throw new Error("${safe(objectKey(path, key))} required");`;
-        } else {
+        } else if (!hasDefault) {
             fn += `if(${nextVar}!==undefined){`;
         }
         fn += write(nextVar, objectKey(path, key), property, config);
         if (config.assignItems) {
+            config.assignItems--;
             fn += `${nextPath}=${nextVar};`;
         }
 
-        if (!isRequired) {
+        if (!checkRequired && !hasDefault) {
             fn += "}";
         }
     }
@@ -372,6 +389,7 @@ extend(Type.object, "properties", (properties, name, path, rules, config) => {
         fn += `var ${nextVar}=${nextPath};`;
         fn += write(nextVar, `${safe(path)}.*`, rules.additionalProperties, config) + "}";
         if (config.assignItems) {
+            config.assignItems--;
             fn += `${nextPath}=${nextVar};`;
         }
     }
@@ -400,7 +418,7 @@ function contextHooks(varName: string, type: Type, ctx: KeyValue, out: string): 
 }
 
 interface CompilerConfig {
-    assignItems?: boolean;
+    assignItems: number;
     hookEqual?: boolean;
     hookToString?: boolean;
     ctx: KeyValue;
@@ -410,6 +428,7 @@ interface CompilerConfig {
 export default function compile(schema: KeyValue, varName: string = "$") {
     let i = 0;
     const config: CompilerConfig = {
+        assignItems: 0,
         ctx: {},
         varName: () => `v${i++}`
     };
@@ -454,11 +473,19 @@ function write(varName: string, path: string, schema: KeyValue, config: Compiler
     let next = false;
     const types = getTypes(schema);
 
+    if (types.indexOf(Type.number) >= 0) {
+        const idx = types.indexOf(Type.integer);
+
+        if (idx >= 0) {
+            types.splice(idx, 1);
+        }
+    }
+
     let fn = "";
 
     if ("default" in schema) {
-        config.assignItems = true;
-        fn += `if(${varName}===void 0)${varName}=${JSON.stringify(schema["default"])};`;
+        config.assignItems++;
+        fn += `if(${varName}===undefined)${varName}=${JSON.stringify(schema["default"])};`;
     }
 
     if ("const" in schema) {
@@ -485,15 +512,6 @@ function write(varName: string, path: string, schema: KeyValue, config: Compiler
         return fn + `if(${check})throw new Error("${safe(path)} should be one of ${safe(values)}");`;
     }
 
-    // fn += `var t${varName}=typeof ${varName};`;
-
-    // if (types.some(isObjectType)) {
-    //     config.hookToString = true;
-    //     const strVar = config.varName();
-    //     fn += `if(t${varName}==="${Type.object}"){var ${strVar}=toString.call(${varName});t${varName}=${strVar}.substring(8, ${strVar}.length-1).toLowerCase();}`;
-    //     // fn += `if(t${varName}==="${Type.object}"){if(${varName}===null){t${varName}="${Type.null}";}else if(Array.isArray(${varName})){t${varName}="${Type.array}";}}`;
-    // }
-
     for (let type of types) {
         if (next) {
             fn += "else ";
@@ -504,13 +522,12 @@ function write(varName: string, path: string, schema: KeyValue, config: Compiler
         if (type === Type.null) {
             fn += `if(${varName}===null){`;
         } else if (type === "integer") {
-            fn += `if(typeof ${varName}==="${Type.number}"&&Number.isInteger(${varName})){`;
+            fn += `if(typeof ${varName}==="${Type.number}"&&!(${varName}%1)){`;
         } else if (type === Type.array) {
             fn += `if(Array.isArray(${varName})){`;
         } else if (type === Type.object) {
             let check = `typeof ${varName}==="${Type.object}"`;
             if (types.indexOf(Type.null) < 0) {
-                //not null
                 check = `${varName}&&${check}`;
             }
             if (types.indexOf(Type.array) < 0) {
