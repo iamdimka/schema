@@ -247,6 +247,27 @@ check(v.object(), {
 });
 
 check(v.object({
+    email: v.string().trim().toLower().match(/^\S+@\S+\.\S+$/)
+}), {
+    schema: {
+        type: "object",
+        required: ["email"],
+        additionalProperties: false,
+        properties: {
+            email: {
+                type: "string",
+                trim: true,
+                toLower: true,
+                pattern: "^\\S+@\\S+\\.\\S+$"
+            }
+        }
+    },
+
+    ok: [{ email: "dmytro.sushylov@whaleapp.com" }],
+    err: [{ email: "abc" }, { email: "abc@dsd" }, { emai: "abc@def.gg" }]
+});
+
+check(v.object({
     a: v.number()
 }), {
     schema: {
