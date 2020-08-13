@@ -9,10 +9,10 @@ export { compile, extend, setBinaryType };
 
 export class Validator<T> {
     readonly schema: KeyValue;
+    isOptional = false;
     type?: string;
 
     protected compiled?: (value: any, varName?: string) => T;
-    isOptional = false;
 
     constructor(schema?: KeyValue) {
         this.schema = schema || {};
@@ -44,11 +44,13 @@ export class Validator<T> {
     clone(): this {
         const validator = Object.create(this);
 
-        validator.rules = {
+        validator.type = this.type;
+        validator.isOptional = this.isOptional;
+        validator.schema = {
             ...this.schema
         };
 
-        return this;
+        return validator;
     }
 
     optional(): Validator<T | undefined> {
@@ -56,16 +58,33 @@ export class Validator<T> {
         return this;
     }
 
+    title(title: string): this {
+        return this.set("title", title);
+    }
+
+    description(description: string): this {
+        return this.set("description", description);
+    }
+
+    examples(examples: T[]): this {
+        return this.set("examples", examples);
+    }
+
     default(value: T): this {
+        this.isOptional = true;
         return this.set("default", value);
     }
 
-    compile(): (item: any) => T {
+    compile(varName?: string): (item: any) => T {
         if (this.type) {
             this.set("type", this.type);
         }
 
-        return this.compiled || (this.compiled = compile(this.schema));
+        if (varName) {
+            return compile(this.schema, { varName, passUndefined: this.isOptional });
+        }
+
+        return this.compiled || (this.compiled = compile(this.schema, { passUndefined: this.isOptional }));
     }
 
     validate(item: any): T {

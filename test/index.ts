@@ -1,10 +1,14 @@
 import v, { Validator } from "../src";
 import assert from "assert";
 
-
-function check(validator: Validator<any>, test: { schema?: any; ok?: any[], err?: any[]; }) {
+function check(validator: Validator<any>, test: { schema?: any; ok?: any[], equals?: Array<[any, any]>, err?: any[]; }) {
     if (test.schema) {
-        assert.deepEqual(validator.toJSON(), test.schema, "Schema is not equal");
+        try {
+            assert.deepEqual(validator.toJSON(), test.schema, "Schema is not equal");
+        } catch (e) {
+            console.log(validator.toJSON(), "is not equal to", test.schema);
+            assert.fail(e);
+        }
     }
 
     if (Array.isArray(test.ok)) {
@@ -14,6 +18,18 @@ function check(validator: Validator<any>, test: { schema?: any; ok?: any[], err?
             } catch (e) {
                 console.log(validator.compile().toString());
                 console.log(`${JSON.stringify(validator)}: ${JSON.stringify(value)}`);
+                assert.fail(e);
+            }
+        }
+    }
+
+    if (Array.isArray(test.equals)) {
+        for (const [a, b] of test.equals) {
+            try {
+                assert.deepEqual(validator.validate(a), b);
+            } catch (e) {
+                console.log(validator.compile().toString());
+                console.log(`${JSON.stringify(validator)}: ${JSON.stringify(a)} is not equal to ${JSON.stringify(b)}`);
                 assert.fail(e);
             }
         }
@@ -39,6 +55,26 @@ check(v.boolean(), {
         type: "boolean"
     },
     ok: [true, false],
+    err: ["abc", 1, 0, Math.random(), {}, undefined]
+});
+
+check(v.boolean().default(true), {
+    schema: {
+        type: "boolean",
+        default: true
+    },
+    ok: [true, false],
+    equals: [
+        [undefined, true]
+    ],
+    err: ["abc", 1, 0, Math.random(), {}]
+});
+
+check(v.boolean().optional(), {
+    schema: {
+        type: "boolean"
+    },
+    ok: [true, false, undefined],
     err: ["abc", 1, 0, Math.random(), {}]
 });
 
@@ -268,12 +304,15 @@ check(v.object({
 });
 
 check(v.object({
-    a: v.number()
+    a: v.number().title("Some a")
 }), {
     schema: {
         type: "object",
         properties: {
-            a: { type: "number" }
+            a: {
+                type: "number",
+                title: "Some a"
+            }
         },
         required: ["a"],
         additionalProperties: false
@@ -377,12 +416,17 @@ check(v.object({
 });
 
 check(v.object({
-    a: v.number()
+    a: v.number(),
+    c: v.boolean().default(false)
 }).additionalProperties(v.string()), {
     schema: {
         type: "object",
         properties: {
-            a: { type: "number" }
+            a: { type: "number" },
+            c: {
+                type: "boolean",
+                default: false
+            }
         },
         required: ["a"],
         additionalProperties: {
@@ -390,7 +434,10 @@ check(v.object({
         }
     },
 
-    ok: [{ a: 1 }, { a: 1, b: "abcc", x: "xx" }],
+    equals: [
+        [{ a: 1 }, { a: 1, c: false }],
+        [{ a: 1, b: "abcc", x: "xx" }, { a: 1, b: "abcc", x: "xx", c: false }],
+    ],
     err: [{ a: "string" }, { a: 1, b: 3 }]
 });
 

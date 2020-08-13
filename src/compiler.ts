@@ -419,21 +419,32 @@ function contextHooks(varName: string, type: Type, ctx: KeyValue, out: string): 
 
 interface CompilerConfig {
     assignItems: number;
+    passUndefined?: boolean;
     hookEqual?: boolean;
     hookToString?: boolean;
     ctx: KeyValue;
     varName(): string;
 }
 
-export default function compile(schema: KeyValue, varName: string = "$") {
+export default function compile(schema: KeyValue, opts?: { varName?: string; passUndefined?: boolean; }) {
     let i = 0;
+
+    if (!opts) {
+        opts = { varName: "$" };
+    }
+
+    if (!opts.varName) {
+        opts.varName = "$";
+    }
+
     const config: CompilerConfig = {
+        passUndefined: opts.passUndefined,
         assignItems: 0,
         ctx: {},
         varName: () => `v${i++}`
     };
 
-    let fn = write(varName, varName, schema, config) + `return ${varName};`;
+    let fn = write(opts.varName, opts.varName, schema, config) + `return ${opts.varName};`;
 
     if (config.hookToString) {
         fn = `var toString = Object.prototype.toString;${fn}`;
@@ -443,7 +454,7 @@ export default function compile(schema: KeyValue, varName: string = "$") {
         fn = eq + fn;
     }
 
-    return new Function(varName, `"use strict";\n${fn}`) as (v: any) => any;
+    return new Function(opts.varName, `"use strict";\n${fn}`) as (v: any) => any;
 }
 
 function getTypes(schema: KeyValue): string[] {
@@ -486,6 +497,8 @@ function write(varName: string, path: string, schema: KeyValue, config: Compiler
     if ("default" in schema) {
         config.assignItems++;
         fn += `if(${varName}===undefined)${varName}=${JSON.stringify(schema["default"])};`;
+    } else if (config.passUndefined) {
+        fn += `if(${varName}===undefined)return ${varName};`;
     }
 
     if ("const" in schema) {
