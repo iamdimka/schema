@@ -264,11 +264,12 @@ extend(Type.array, "items", (items, name, path, rules, config) => {
         const nextVar = config.varName();
         config.ctx.length = true;
         fn += `for(var i${name}=0,${nextVar};i${name}<l${name};i${name}++){${nextVar}=${name}[i${name}];`;
-        fn += write(nextVar, `${path}[*]`, rules.items, config) + "}";
+        fn += write(nextVar, `${path}[*]`, rules.items, config);
         if (config.assignItems) {
             config.assignItems--;
             fn += `${name}[i${name}]=${nextVar};`;
         }
+        fn += "}"
 
         return fn;
     }

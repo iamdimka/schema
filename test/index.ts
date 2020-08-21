@@ -206,6 +206,17 @@ check(v.array(), {
     err: [1, null, Math.random()]
 });
 
+check(v.array(v.string()), {
+    schema: {
+        type: "array",
+        items: {
+            type: "string"
+        }
+    },
+    ok: [["a"], [], ["a", "b"]],
+    err: [1, null, Math.random(),  [1, 2, 3]]
+});
+
 check(v.array().minItems(1), {
     schema: {
         type: "array",
