@@ -269,7 +269,7 @@ extend(Type.array, "items", (items, name, path, rules, config) => {
             config.assignItems--;
             fn += `${name}[i${name}]=${nextVar};`;
         }
-        fn += "}"
+        fn += "}";
 
         return fn;
     }
@@ -575,6 +575,26 @@ function write(varName: string, path: string, schema: KeyValue, config: Compiler
 
     if (schema.type) {
         fn += `else throw new Error("${safe(path)} should be ${types.join(" or ")}");`;
+    }
+
+    if (schema.anyOf) {
+        const vOneOf = config.varName();
+        const vOneOfErrors = config.varName();
+        fn += `let ${vOneOf}=false,${vOneOfErrors}=[];`;
+
+        for (const s of schema.anyOf) {
+            fn += `if(!${vOneOf}){try{`;
+            fn += write(varName, path, s, config);
+            fn += `${vOneOf}=true}catch(e){${vOneOfErrors}.push(e.message)}}`;
+        }
+
+        fn += `if(!${vOneOf})throw new Error(${vOneOfErrors}.join(" or "));`;
+    }
+
+    if (schema.not) {
+        const vNot = config.varName();
+        fn += `let ${vNot}=true;try{${write(varName, path, schema.not, config)}}catch(e){${vNot}=false;}`;
+        fn += `if(${vNot})throw new Error("${safe(path)} should not passed ${safe(JSON.stringify(schema.not))}");`;
     }
 
     return fn;

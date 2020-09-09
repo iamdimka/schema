@@ -214,7 +214,7 @@ check(v.array(v.string()), {
         }
     },
     ok: [["a"], [], ["a", "b"]],
-    err: [1, null, Math.random(),  [1, 2, 3]]
+    err: [1, null, Math.random(), [1, 2, 3]]
 });
 
 check(v.array().minItems(1), {
@@ -530,4 +530,28 @@ check(v.object({
             includeDepositors: true
         }
     ]
+});
+
+check(v.anyOf(
+    v.integer().min(10),
+    v.integer().max(0)
+), {
+    schema: {
+        anyOf: [
+            { type: "integer", minimum: 10 },
+            { type: "integer", maximum: 0 }
+        ]
+    },
+    ok: [-1, 0, 15, 22, 150],
+    err: [true, {}, [], null, undefined, Math.random()]
+});
+
+check(v.not(v.string()), {
+    schema: {
+        not: {
+            type: "string"
+        }
+    },
+    ok: [-1, 0, 15, 22, 150, true, {}, [], null, undefined, Math.random()],
+    err: ["abc", ""]
 });

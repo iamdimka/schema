@@ -225,7 +225,7 @@ export class ObjectValidator<T extends KeyValue = {}> extends Validator<T> {
         return this.set("properties", props) as any;
     }
 
-    additionalProperties(additionalProperties: boolean | Validator<any>) {
+    additionalProperties<V = any>(additionalProperties: boolean | Validator<V>): ObjectValidator<T & { [key: string]: V; }> {
         return this.set("additionalProperties", additionalProperties);
     }
 
@@ -358,6 +358,16 @@ function tuple(items: any): ArrayValidator<any[]> {
     return v.tuple(items);
 }
 
+function anyOf<T1, T2, T3, T4, T5>(v1: Validator<T1>, v2: Validator<T2>, v3: Validator<T3>, v4: Validator<T4>, v5: Validator<T5>): Validator<T1 | T2 | T3 | T4 | T5>;
+function anyOf<T1, T2, T3, T4>(v1: Validator<T1>, v2: Validator<T2>, v3: Validator<T3>, v4: Validator<T4>): Validator<T1 | T2 | T3 | T4>;
+function anyOf<T1, T2, T3>(v1: Validator<T1>, v2: Validator<T2>, v3: Validator<T3>): Validator<T1 | T2 | T3>;
+function anyOf<T1, T2>(v1: Validator<T1>, v2: Validator<T2>): Validator<T1 | T2>;
+function anyOf(...any: Validator<any>[]): Validator<any> {
+    return new Validator<any>({
+        anyOf: any.map(item => item.toJSON())
+    });
+}
+
 export const v = {
     raw: <T = any>(schema: KeyValue) => new Validator<T>(schema),
     boolean: () => new BooleanValidator(),
@@ -368,10 +378,15 @@ export const v = {
     object,
     array,
     tuple,
+    map: <V = any>(v?: Validator<V>) => new ObjectValidator().additionalProperties(v || true),
     equal: <T>(item: T) => new Validator<T>({ "const": item }),
     enum: <T>(items: T[]) => new Validator<T>({ "enum": items }),
-    any: () => new Validator<any>()
+    any: () => new Validator<any>(),
+    anyOf,
+    not: <T>(v: Validator<T>) => new Validator<Exclude<any, T>>({ not: v.toJSON() })
 };
+
+const x = v.map(v.string());
 
 export type ValidateBuilder = typeof v;
 export default v;
